@@ -1,5 +1,6 @@
 # Visual Studio 2015 user specific files
 .vs/
+.vsconfig
 
 # Compiled Object files
 *.slo
@@ -40,7 +41,6 @@
 *.sdf
 *.VC.db
 *.VC.opendb
-.vsconfig
 
 # Precompiled Assets
 SourceArt/**/*.png
@@ -73,3 +73,15 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# IDE
+.idea/*
+
+# CitySample Assets
+# Migrate CitySample /Content/Building/CH/Kit_Bldg_CHA To /Content/
+Content/Building/*
+Content/Environment/*
+Content/Material/*
+Content/Megascans/*
+Content/Prop/*
+Content/Texture/*
