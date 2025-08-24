@@ -84,7 +84,6 @@ Content/Environment/*
 Content/Material/*
 Content/Megascans/*
 Content/Prop/*
-Content/Texture/*
+Content/Textures/*
 *.7z
-/Content/Textures
 /Content/Developers
