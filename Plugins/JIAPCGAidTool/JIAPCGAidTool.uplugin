@@ -19,6 +19,21 @@
 			"Name": "JIAPCGAidTool",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "CityGenerator",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "GeometryScripting",
+			"Enabled": true
+		},
+		{
+			"Name":"EditorScriptingUtilities",
+			"Enabled": true
 		}
 	]
 }
