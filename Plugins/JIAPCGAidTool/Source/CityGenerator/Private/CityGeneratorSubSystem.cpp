@@ -109,106 +109,254 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 	 }
 	 */
 	//场景Spline通用数据
-	SceneSplinesData->SetStringField("CoordSpace","Local");
+	SceneSplinesData->SetStringField(TEXT("CoordSpace"), "Local");
 	//场景中所有Spline数据
 	TArray<TSharedPtr<FJsonValue>> SplineDataArray;
-	int32 SplineCounter=0;
+	int32 SplineCounter = 0;
 	for (const TWeakObjectPtr<USplineComponent> SingleSpline : CityGeneratorSplineArray)
 	{
 		if (!SingleSpline.IsValid()) { continue; }
 		TStrongObjectPtr<USplineComponent> TargetSpline = SingleSpline.Pin();
-		AActor* SplineOwner=TargetSpline->GetOwner();
+		AActor* SplineOwner = TargetSpline->GetOwner();
 
 		//单个Spline数据
 		TSharedPtr<FJsonObject> SingleSplineData(new FJsonObject());
 		//SplineOwner信息输入
-		if (nullptr==SplineOwner){continue;}
-		SingleSplineData->SetNumberField("Index",SplineCounter);
+		if (nullptr == SplineOwner) { continue; }
+		SingleSplineData->SetStringField(TEXT("OwnerName"), SplineOwner->GetActorNameOrLabel());
+		//用于判定是不是同一个Actor身上的多个SplineComp
+		SingleSplineData->SetStringField(TEXT("OwnerActorID"), SplineOwner->GetActorGuid().ToString());
+		SingleSplineData->SetNumberField(TEXT("Index"), SplineCounter);
 		//ActorTag和CompTag
-		if (bSaveActorTag&&!SplineOwner->Tags.IsEmpty())
+		if (bSaveActorTag && !SplineOwner->Tags.IsEmpty())
 		{
 			TArray<TSharedPtr<FJsonValue>> ActorTags;
-			int32 ActorTagCounter=0;
+			int32 ActorTagCounter = 0;
 			for (const FName& ActorTag : SplineOwner->Tags)
 			{
 				TSharedPtr<FJsonObject> SingleTag;
-				FString TagName="Tag"+ActorTagCounter;
-				SingleTag->SetStringField(TagName,ActorTag.ToString());
+				FString TagName = "Tag" + ActorTagCounter;
+				SingleTag->SetStringField(TagName, ActorTag.ToString());
 				ActorTags.Emplace(MakeShareable(new FJsonValueObject(SingleTag)));
 				ActorTagCounter++;
 			}
-			SingleSplineData->SetArrayField("ActorTags",ActorTags);
+			SingleSplineData->SetArrayField(TEXT("ActorTags"), ActorTags);
 		}
-		if (bSaveCompTag&&!TargetSpline->ComponentTags.IsEmpty())
+		if (bSaveCompTag && !TargetSpline->ComponentTags.IsEmpty())
 		{
 			TArray<TSharedPtr<FJsonValue>> ComponentTags;
-			int32 CompTagCounter=0;
+			int32 CompTagCounter = 0;
 			for (const FName& CompTag : TargetSpline->ComponentTags)
 			{
 				TSharedPtr<FJsonObject> SingleTag;
-				FString TagName="Tag"+CompTagCounter;
-				SingleTag->SetStringField(TagName,CompTag.ToString());
+				FString TagName = "Tag" + CompTagCounter;
+				SingleTag->SetStringField(TagName, CompTag.ToString());
 				ComponentTags.Emplace(MakeShareable(new FJsonValueObject(SingleTag)));
 				CompTagCounter++;
 			}
-			SingleSplineData->SetArrayField("CompTags",ComponentTags);
+			SingleSplineData->SetArrayField(TEXT("CompTags"), ComponentTags);
 		}
 		//ActorTransform
-		FTransform OwnerTransform=SplineOwner->GetActorTransform();
-		SingleSplineData->SetNumberField("Location.X",OwnerTransform.GetLocation().X);
-		SingleSplineData->SetNumberField("Location.Y",OwnerTransform.GetLocation().Y);
-		SingleSplineData->SetNumberField("Location.Z",OwnerTransform.GetLocation().Z);
-		
-		SingleSplineData->SetNumberField("Rotation.X",OwnerTransform.GetRotation().X);
-		SingleSplineData->SetNumberField("Rotation.Y",OwnerTransform.GetRotation().Y);
-		SingleSplineData->SetNumberField("Rotation.Z",OwnerTransform.GetRotation().Z);
+		FTransform OwnerTransform = SplineOwner->GetActorTransform();
+		SingleSplineData->SetNumberField(TEXT("Location.X"), OwnerTransform.GetLocation().X);
+		SingleSplineData->SetNumberField(TEXT("Location.Y"), OwnerTransform.GetLocation().Y);
+		SingleSplineData->SetNumberField(TEXT("Location.Z"), OwnerTransform.GetLocation().Z);
 
-		SingleSplineData->SetNumberField("Transform.X",OwnerTransform.GetScale3D().X);
-		SingleSplineData->SetNumberField("Transform.Y",OwnerTransform.GetScale3D().Y);
-		SingleSplineData->SetNumberField("Transform.Z",OwnerTransform.GetScale3D().Z);
+		SingleSplineData->SetNumberField(TEXT("Rotation.X"), OwnerTransform.GetRotation().X);
+		SingleSplineData->SetNumberField(TEXT("Rotation.Y"), OwnerTransform.GetRotation().Y);
+		SingleSplineData->SetNumberField(TEXT("Rotation.Z"), OwnerTransform.GetRotation().Z);
+		SingleSplineData->SetNumberField(TEXT("Rotation.W"), OwnerTransform.GetRotation().W);
+
+		SingleSplineData->SetNumberField(TEXT("Scale.X"), OwnerTransform.GetScale3D().X);
+		SingleSplineData->SetNumberField(TEXT("Scale.Y"), OwnerTransform.GetScale3D().Y);
+		SingleSplineData->SetNumberField(TEXT("Scale.Z"), OwnerTransform.GetScale3D().Z);
 		//SplineControlPoint信息
 		TArray<TSharedPtr<FJsonValue>> SingleSplinePointsArray;
-		int32 ControlPointCount=TargetSpline->GetNumberOfSplinePoints();
+		int32 ControlPointCount = TargetSpline->GetNumberOfSplinePoints();
 		TArray<FVector> PointsLoc;
 		PointsLoc.SetNum(ControlPointCount);
-		TArray<FRotator> PointsRot;
-		PointsRot.SetNum(ControlPointCount);
 		TArray<FVector> PointsTan;
 		PointsTan.SetNum(ControlPointCount);
-		
-		for (int i = 0; i <ControlPointCount  ; ++i)
+		TArray<FRotator> PointsRot;
+		PointsRot.SetNum(ControlPointCount);
+
+
+		for (int i = 0; i < ControlPointCount; ++i)
 		{
-			TargetSpline->GetLocationAndTangentAtSplinePoint(i,PointsLoc[i],PointsTan[i],ESplineCoordinateSpace::Local);
-			PointsRot[i]=TargetSpline->GetRotationAtSplinePoint(i,ESplineCoordinateSpace::Local);
+			TargetSpline->GetLocationAndTangentAtSplinePoint(i, PointsLoc[i], PointsTan[i],
+			                                                 ESplineCoordinateSpace::Local);
+			PointsRot[i] = TargetSpline->GetRotationAtSplinePoint(i, ESplineCoordinateSpace::Local);
 		}
 		for (int i = 0; i < PointsLoc.Num(); ++i)
 		{
 			TSharedPtr<FJsonObject> SinglePointData(new FJsonObject());
-			SinglePointData->SetNumberField("Location.X",PointsLoc[i].X);
-			SinglePointData->SetNumberField("Location.Y",PointsLoc[i].Y);
-			SinglePointData->SetNumberField("Location.Z",PointsLoc[i].Z);
-			
-			SinglePointData->SetNumberField("Tangent.X",PointsLoc[i].X);
-			SinglePointData->SetNumberField("Tangent.Y",PointsLoc[i].Y);
-			SinglePointData->SetNumberField("Tangent.Z",PointsLoc[i].Z);
-			
-			SinglePointData->SetNumberField("Rotation.X",PointsLoc[i].X);
-			SinglePointData->SetNumberField("Rotation.Y",PointsLoc[i].Y);
-			SinglePointData->SetNumberField("Rotation.Z",PointsLoc[i].Z);
+			SinglePointData->SetNumberField(TEXT("Location.X"), PointsLoc[i].X);
+			SinglePointData->SetNumberField(TEXT("Location.Y"), PointsLoc[i].Y);
+			SinglePointData->SetNumberField(TEXT("Location.Z"), PointsLoc[i].Z);
+
+			SinglePointData->SetNumberField(TEXT("Tangent.X"), PointsTan[i].X);
+			SinglePointData->SetNumberField(TEXT("Tangent.Y"), PointsTan[i].Y);
+			SinglePointData->SetNumberField(TEXT("Tangent.Z"), PointsTan[i].Z);
+
+			SinglePointData->SetNumberField(TEXT("Rotation.Yaw"), PointsRot[i].Yaw);
+			SinglePointData->SetNumberField(TEXT("Rotation.Pitch"), PointsRot[i].Pitch);
+			SinglePointData->SetNumberField(TEXT("Rotation.Roll"), PointsRot[i].Roll);
 			SingleSplinePointsArray.Emplace(MakeShareable(new FJsonValueObject(SinglePointData)));
 		}
-		SingleSplineData->SetArrayField("Points",SingleSplinePointsArray);
+		SingleSplineData->SetArrayField(TEXT("Points"), SingleSplinePointsArray);
 		SplineDataArray.Emplace(MakeShareable(new FJsonValueObject(SingleSplineData)));
 		SplineCounter++;
 	}
-	SceneSplinesData->SetArrayField("Splines",SplineDataArray);
+	SceneSplinesData->SetArrayField(TEXT("Splines"), SplineDataArray);
 	FString SerializeStr;
-	TSharedRef<TJsonWriter<TCHAR,TCondensedJsonPrintPolicy<TCHAR>>> JsonWriter=TJsonWriterFactory<TCHAR,TCondensedJsonPrintPolicy<TCHAR>>::Create(&SerializeStr);
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> JsonWriter = TJsonWriterFactory<
+		TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&SerializeStr);
 
-	FJsonSerializer::Serialize(SceneSplinesData.ToSharedRef(),JsonWriter);
-	UE_LOG(LogTemp,Display,TEXT("Json Res:[%s]"),*SerializeStr);
-	FFileHelper::SaveStringToFile(SerializeStr,*TargetDir);
-	UNotifyUtilities::ShowPopupMsgAtCorner("Save Scene Spline Data Finished!");
+	FJsonSerializer::Serialize(SceneSplinesData.ToSharedRef(), JsonWriter);
+	UE_LOG(LogTemp, Display, TEXT("Json Res:[%s]"), *SerializeStr);
+	FFileHelper::SaveStringToFile(SerializeStr, *TargetDir);
+	UNotifyUtilities::ShowPopupMsgAtCorner(FString::Printf(
+		TEXT("Save Scene Spline Data Finished!Save %d,Total %d)"), SplineCounter, CityGeneratorSplineArray.Num()));
+}
+
+void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bool bTryParseActorTag,
+                                                 bool bTryParseCompTag, bool bAutoCollectAfterSpawn)
+{
+	//判断路径和文件内容合法性
+	if (!FPaths::FileExists(FileFullPath))
+	{
+		UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "File Doesn't Exit!Please Check Path", true);
+		UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
+		return;
+	}
+	if (!FileFullPath.EndsWith(".json") && !FileFullPath.EndsWith(".JSON"))
+	{
+		UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "Invalid Format!Please Check Path", true);
+		UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
+		return;
+	}
+	FString DeserializeStr;
+	FFileHelper::LoadFileToString(DeserializeStr, *FileFullPath);
+	if (DeserializeStr.IsEmpty())
+	{
+		UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "Read None Data In Given File", true);
+		UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
+		return;
+	}
+	//反序列化
+	TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<TCHAR>::Create(DeserializeStr);
+	TSharedPtr<FJsonObject> SceneSplinesData;
+	FJsonSerializer::Deserialize(JsonReader, SceneSplinesData);
+	bool bIsLocalCoord = true;
+	SceneSplinesData->TryGetBoolField(TEXT("CoordSpace"), bIsLocalCoord);
+	//场景中的Spline数据
+	TArray<TSharedPtr<FJsonValue>> SplineDataArray;
+	//需要一个指向数组的指针
+	const TArray<TSharedPtr<FJsonValue>>* SplineDataArrayPtr = &SplineDataArray;
+	bool bGetDataSuccess = SceneSplinesData->TryGetArrayField(TEXT("Splines"), SplineDataArrayPtr);
+	if (!bGetDataSuccess || SplineDataArray.IsEmpty())
+	{
+		UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "Read None Data In Given File", true);
+		UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
+		return;
+	}
+	//读到了数据开始逐个解析
+	TMap<FGuid, TObjectPtr<AActor>> SpawnedActors;
+	for (const TSharedPtr<FJsonValue>& SingleSplineDataValue : SplineDataArray)
+	{
+		const TSharedPtr<FJsonObject>& SingleSplineData = SingleSplineDataValue->AsObject();
+		FString OwnerActorName = "";
+		SingleSplineData->TryGetStringField(TEXT("OwnerName"), OwnerActorName);
+		FString OwnerActorGuidStr = "";
+		SingleSplineData->TryGetStringField(TEXT("OwnerActorID"), OwnerActorGuidStr);
+		FGuid OwnerActorGuid = FGuid(OwnerActorGuidStr);
+		//解析Tag
+		TArray<FName> ActorTags;
+		if (bTryParseActorTag && SingleSplineData->HasField(TEXT("ActorTags")))
+		{
+			TArray<TSharedPtr<FJsonValue>> ActorTagsJson = SingleSplineData->GetArrayField(TEXT("ActorTags"));
+			int32 ActorTagCounter = 0;
+			for (const TSharedPtr<FJsonValue>& SingleTag : ActorTagsJson)
+			{
+				FString TagName = "Tag" + ActorTagCounter;
+				ActorTags.Emplace(SingleTag->AsObject()->GetStringField(TagName));
+				ActorTagCounter++;
+			}
+		}
+		TArray<FName> SplineCompTags;
+		if (bTryParseActorTag && SingleSplineData->HasField(TEXT("CompTags")))
+		{
+			TArray<TSharedPtr<FJsonValue>> CompTagsJson = SingleSplineData->GetArrayField(TEXT("CompTags"));
+			int32 CompTagCounter = 0;
+			for (const TSharedPtr<FJsonValue>& SingleTag : CompTagsJson)
+			{
+				FString TagName = "Tag" + CompTagCounter;
+				SplineCompTags.Emplace(SingleTag->AsObject()->GetStringField(TagName));
+				CompTagCounter++;
+			}
+		}
+		//解析OwnerTransform
+		FVector OwnerLocation;
+		SingleSplineData->TryGetNumberField(TEXT("Location.X"), OwnerLocation.X);
+		SingleSplineData->TryGetNumberField(TEXT("Location.Y"), OwnerLocation.Y);
+		SingleSplineData->TryGetNumberField(TEXT("Location.Z"), OwnerLocation.Z);
+		FQuat OwnerRotation;
+		SingleSplineData->TryGetNumberField(TEXT("Rotation.X"), OwnerRotation.X);
+		SingleSplineData->TryGetNumberField(TEXT("Rotation.Y"), OwnerRotation.Y);
+		SingleSplineData->TryGetNumberField(TEXT("Rotation.Z"), OwnerRotation.Z);
+		SingleSplineData->TryGetNumberField(TEXT("Rotation.W"), OwnerRotation.W);
+		FVector OwnerScale;
+		SingleSplineData->TryGetNumberField(TEXT("Scale.X"), OwnerScale.X);
+		SingleSplineData->TryGetNumberField(TEXT("Scale.Y"), OwnerScale.Y);
+		SingleSplineData->TryGetNumberField(TEXT("Scale.Z"), OwnerScale.Z);
+		FTransform OwnerTransform;
+		OwnerTransform.SetLocation(OwnerLocation);
+		OwnerTransform.SetRotation(OwnerRotation);
+		OwnerTransform.SetScale3D(OwnerScale);
+		//解析点信息
+		TArray<FVector> PointsLoc;
+		TArray<FVector> PointsTan;
+		TArray<FRotator> PointsRot;
+
+		TArray<TSharedPtr<FJsonValue>> SingleSplinePointsArray;
+		const TArray<TSharedPtr<FJsonValue>>* SingleSplinePointsArrayPtr = &SingleSplinePointsArray;
+		bool bGetControlPointSuccess = SingleSplineData->TryGetArrayField(TEXT("Points"), SingleSplinePointsArrayPtr);
+		//没有解析到点信息
+		if (!bGetControlPointSuccess || SingleSplinePointsArray.IsEmpty())
+		{
+			UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "Read None Data In Given File", true);
+			UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
+			continue;
+		}
+		for (const TSharedPtr<FJsonValue>& SinglePointDataValue : SingleSplinePointsArray)
+		{
+			const TSharedPtr<FJsonObject>& SinglePointData = SinglePointDataValue->AsObject();
+			FVector PointLoc;
+			SinglePointData->TryGetNumberField(TEXT("Location.X"), PointLoc.X);
+			SinglePointData->TryGetNumberField(TEXT("Location.Y"), PointLoc.Y);
+			SinglePointData->TryGetNumberField(TEXT("Location.Z"), PointLoc.Z);
+			FVector PointTan;
+			SinglePointData->TryGetNumberField(TEXT("Tangent.X"), PointTan.X);
+			SinglePointData->TryGetNumberField(TEXT("Tangent.Y"), PointTan.Y);
+			SinglePointData->TryGetNumberField(TEXT("Tangent.Z"), PointTan.Z);
+			FRotator PointRot;
+			SinglePointData->TryGetNumberField(TEXT("Rotation.Yaw"), PointRot.Yaw);
+			SinglePointData->TryGetNumberField(TEXT("Rotation.Pitch"), PointRot.Pitch);
+			SinglePointData->TryGetNumberField(TEXT("Rotation.Roll"), PointRot.Roll);
+			PointsLoc.Emplace(PointLoc);
+			PointsTan.Emplace(PointTan);
+			PointsRot.Emplace(PointRot);
+		}
+		if (SpawnedActors.Contains(OwnerActorGuid))
+		{
+			AddSplineCompToExistedActor(SpawnedActors[OwnerActorGuid], PointsLoc, PointsTan, PointsRot);
+		}
+		else
+		{
+			SpawnedActors.Emplace(OwnerActorGuid,
+			                      SpawnActorWithSplineComp(OwnerActorName, PointsLoc, PointsTan, PointsRot));
+		}
+	};
 }
 
 

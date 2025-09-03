@@ -5,18 +5,22 @@
 
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
+DEFINE_LOG_CATEGORY(JIAPCGAidTool)
 
 EAppReturnType::Type UNotifyUtilities::ShowMsgDialog(EAppMsgType::Type MsgType, const FString& DisplayMessage,
-                                                      bool bShowMsgAsWarning)
+                                                     bool bShowMsgAsWarning)
 {
-	FText TitleText=bShowMsgAsWarning?FText::FromStringView(TEXT("Warning")):FText::FromStringView(TEXT("Message"));
-	return FMessageDialog::Open(MsgType,FText::FromStringView(DisplayMessage),TitleText);
+	FText TitleText = bShowMsgAsWarning
+		                  ? FText::FromStringView(TEXT("Warning"))
+		                  : FText::FromStringView(TEXT("Message"));
+	return FMessageDialog::Open(MsgType, FText::FromStringView(DisplayMessage), TitleText);
 }
 
 void UNotifyUtilities::ShowPopupMsgAtCorner(const FString& Message)
 {
 	FNotificationInfo NotificationInfo(FText::FromStringView(Message));
-	NotificationInfo.bUseLargeFont=true;
-	NotificationInfo.FadeInDuration=10.0f;
+	NotificationInfo.bUseLargeFont = true;
+	NotificationInfo.FadeInDuration = 10.0f;
 	FSlateNotificationManager::Get().AddNotification(NotificationInfo);
+	UE_LOG(JIAPCGAidTool, Display, TEXT("%s"), *Message);
 }

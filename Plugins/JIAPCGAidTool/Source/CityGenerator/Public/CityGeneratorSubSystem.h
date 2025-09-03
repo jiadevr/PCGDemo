@@ -25,7 +25,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void CollectAllSplines(const FName OptionalActorTag = "", const FName OptionalCompTag = "");
-	
+
 	/**
 	 * 序列化Spline信息，用于备份
 	 * @param FileName 保存文件名称，不需要后缀，以.json格式保存；有重名文件时有对话框提示
@@ -35,11 +35,21 @@ public:
 	 * @param bForceRecollect 保存前是否刷新当前Spline信息，即首先运行UCityGeneratorSubSystem::CollectAllSplines
 	 */
 	UFUNCTION(BlueprintCallable)
-	void SerializeSplines(const FString& FileName, const FString& FilePath="", bool bSaveActorTag= false, bool bSaveCompTag= false,
+	void SerializeSplines(const FString& FileName, const FString& FilePath = "", bool bSaveActorTag = false,
+	                      bool bSaveCompTag = false,
 	                      bool bForceRecollect = false);
 
 	UFUNCTION(BlueprintCallable)
-	void DeserializeSplines(const FString& FileFullPath,bool bTryParseActorTag=false,bool bTryParseCompTag=false,bool bAutoCollectAfterSpawn=false);
+	void DeserializeSplines(const FString& FileFullPath, bool bTryParseActorTag = false, bool bTryParseCompTag = false,
+	                        bool bAutoCollectAfterSpawn = false);
+
+
+	TObjectPtr<AActor> SpawnActorWithSplineComp(const FString& ActorName, const TArray<FVector>& PointsLoc,
+	                                            const TArray<FVector>& PointTangent,
+	                                            const TArray<FRotator>& PointRotator);
+
+	void AddSplineCompToExistedActor(TObjectPtr<AActor> TargetActor, const TArray<FVector>& PointsLoc,
+	                                 const TArray<FVector>& PointTangent, const TArray<FRotator>& PointRotator);
 #pragma endregion Base
 
 	UFUNCTION(BlueprintCallable)
