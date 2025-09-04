@@ -27,7 +27,8 @@ public class CityGenerator : ModuleRules
 				"AssetTools",
 				"EditorScriptingUtilities",
 				"Json",
-				"JsonUtilities"
+				"JsonUtilities",
+				"SubobjectDataInterface"
 			}
 		);
 	}

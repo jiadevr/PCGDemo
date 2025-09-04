@@ -44,12 +44,14 @@ public:
 	                        bool bAutoCollectAfterSpawn = false);
 
 
-	TObjectPtr<AActor> SpawnActorWithSplineComp(const FString& ActorName, const TArray<FVector>& PointsLoc,
+	TObjectPtr<AActor> SpawnActorWithSplineComp(const FString& ActorName, const FTransform& ActorTrans,
+	                                            const TArray<int32>& PointsType, const TArray<FVector>& PointsLoc,
 	                                            const TArray<FVector>& PointTangent,
 	                                            const TArray<FRotator>& PointRotator);
 
-	void AddSplineCompToExistedActor(TObjectPtr<AActor> TargetActor, const TArray<FVector>& PointsLoc,
-	                                 const TArray<FVector>& PointTangent, const TArray<FRotator>& PointRotator);
+	void AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
+	                               const TArray<FVector>& PointsLoc,
+	                               const TArray<FVector>& PointTangent, const TArray<FRotator>& PointRotator);
 #pragma endregion Base
 
 	UFUNCTION(BlueprintCallable)
@@ -59,5 +61,5 @@ protected:
 	UPROPERTY()
 	TArray<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineArray;
 
-	TObjectPtr<UObject> GetEditorContext() const;
+	TObjectPtr<UWorld> GetEditorContext() const;
 };

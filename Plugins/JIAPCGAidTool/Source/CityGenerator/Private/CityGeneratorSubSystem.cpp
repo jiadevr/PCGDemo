@@ -4,6 +4,9 @@
 #include "CityGeneratorSubSystem.h"
 
 #include "NotifyUtilities.h"
+#include "SubobjectDataSubsystem.h"
+#include "SubobjectDataHandle.h"
+#include  "SubobjectData.h"
 #include "Components/SplineComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Subsystems/UnrealEditorSubsystem.h"
@@ -190,6 +193,9 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 		for (int i = 0; i < PointsLoc.Num(); ++i)
 		{
 			TSharedPtr<FJsonObject> SinglePointData(new FJsonObject());
+			int32 PointType = TargetSpline->GetSplinePointType(i);
+			SinglePointData->SetNumberField(TEXT("PointType"), PointType);
+			
 			SinglePointData->SetNumberField(TEXT("Location.X"), PointsLoc[i].X);
 			SinglePointData->SetNumberField(TEXT("Location.Y"), PointsLoc[i].Y);
 			SinglePointData->SetNumberField(TEXT("Location.Z"), PointsLoc[i].Z);
@@ -254,7 +260,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 	//需要一个指向数组的指针
 	const TArray<TSharedPtr<FJsonValue>>* SplineDataArrayPtr = &SplineDataArray;
 	bool bGetDataSuccess = SceneSplinesData->TryGetArrayField(TEXT("Splines"), SplineDataArrayPtr);
-	if (!bGetDataSuccess || SplineDataArray.IsEmpty())
+	if (!bGetDataSuccess || SplineDataArrayPtr->IsEmpty())
 	{
 		UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "Read None Data In Given File", true);
 		UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
@@ -262,7 +268,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 	}
 	//读到了数据开始逐个解析
 	TMap<FGuid, TObjectPtr<AActor>> SpawnedActors;
-	for (const TSharedPtr<FJsonValue>& SingleSplineDataValue : SplineDataArray)
+	for (const TSharedPtr<FJsonValue>& SingleSplineDataValue : *SplineDataArrayPtr)
 	{
 		const TSharedPtr<FJsonObject>& SingleSplineData = SingleSplineDataValue->AsObject();
 		FString OwnerActorName = "";
@@ -284,7 +290,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 			}
 		}
 		TArray<FName> SplineCompTags;
-		if (bTryParseActorTag && SingleSplineData->HasField(TEXT("CompTags")))
+		if (bTryParseCompTag && SingleSplineData->HasField(TEXT("CompTags")))
 		{
 			TArray<TSharedPtr<FJsonValue>> CompTagsJson = SingleSplineData->GetArrayField(TEXT("CompTags"));
 			int32 CompTagCounter = 0;
@@ -314,6 +320,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 		OwnerTransform.SetRotation(OwnerRotation);
 		OwnerTransform.SetScale3D(OwnerScale);
 		//解析点信息
+		TArray<int32> PointsType;
 		TArray<FVector> PointsLoc;
 		TArray<FVector> PointsTan;
 		TArray<FRotator> PointsRot;
@@ -322,15 +329,17 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 		const TArray<TSharedPtr<FJsonValue>>* SingleSplinePointsArrayPtr = &SingleSplinePointsArray;
 		bool bGetControlPointSuccess = SingleSplineData->TryGetArrayField(TEXT("Points"), SingleSplinePointsArrayPtr);
 		//没有解析到点信息
-		if (!bGetControlPointSuccess || SingleSplinePointsArray.IsEmpty())
+		if (!bGetControlPointSuccess || SingleSplinePointsArrayPtr->IsEmpty())
 		{
 			UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok, "Read None Data In Given File", true);
 			UNotifyUtilities::ShowPopupMsgAtCorner("Failed To Load Data");
 			continue;
 		}
-		for (const TSharedPtr<FJsonValue>& SinglePointDataValue : SingleSplinePointsArray)
+		for (const TSharedPtr<FJsonValue>& SinglePointDataValue : *SingleSplinePointsArrayPtr)
 		{
 			const TSharedPtr<FJsonObject>& SinglePointData = SinglePointDataValue->AsObject();
+			int32 PointType = 0;
+			SinglePointData->TryGetNumberField(TEXT("PointType"), PointType);
 			FVector PointLoc;
 			SinglePointData->TryGetNumberField(TEXT("Location.X"), PointLoc.X);
 			SinglePointData->TryGetNumberField(TEXT("Location.Y"), PointLoc.Y);
@@ -343,20 +352,97 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Yaw"), PointRot.Yaw);
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Pitch"), PointRot.Pitch);
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Roll"), PointRot.Roll);
+			PointsType.Emplace(PointType);
 			PointsLoc.Emplace(PointLoc);
 			PointsTan.Emplace(PointTan);
 			PointsRot.Emplace(PointRot);
 		}
+		//@TODO：后续看量改成分帧处理
 		if (SpawnedActors.Contains(OwnerActorGuid))
 		{
-			AddSplineCompToExistedActor(SpawnedActors[OwnerActorGuid], PointsLoc, PointsTan, PointsRot);
+			AddSplineCompToExistActor(SpawnedActors[OwnerActorGuid], PointsType, PointsLoc, PointsTan, PointsRot);
 		}
 		else
 		{
 			SpawnedActors.Emplace(OwnerActorGuid,
-			                      SpawnActorWithSplineComp(OwnerActorName, PointsLoc, PointsTan, PointsRot));
+			                      SpawnActorWithSplineComp(OwnerActorName, OwnerTransform, PointsType, PointsLoc,
+			                                               PointsTan,
+			                                               PointsRot));
 		}
 	};
+	if (bAutoCollectAfterSpawn)
+	{
+		CollectAllSplines();
+	}
+}
+
+TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnActorWithSplineComp(const FString& ActorName,
+                                                                     const FTransform& ActorTrans,
+                                                                     const TArray<int32>& PointsType,
+                                                                     const TArray<FVector>& PointsLoc,
+                                                                     const TArray<FVector>& PointTangent,
+                                                                     const TArray<FRotator>& PointRotator)
+{
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Name=FName(*ActorName);
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	TObjectPtr<AActor> ActorWithSplineComp = GetEditorContext()->SpawnActor<AActor>(
+		AActor::StaticClass(), ActorTrans, SpawnParams);
+	AddSplineCompToExistActor(ActorWithSplineComp, PointsType, PointsLoc, PointTangent, PointRotator);
+	ActorWithSplineComp->SetActorLabel(ActorName);
+	return ActorWithSplineComp;
+}
+
+void UCityGeneratorSubSystem::AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
+                                                        const TArray<FVector>& PointsLoc,
+                                                        const TArray<FVector>& PointsTangent,
+                                                        const TArray<FRotator>& PointsRotator)
+{
+	//有效性检查
+	if (nullptr == TargetActor)
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Null Actor Passed In");
+		return;
+	}
+	if (PointsLoc.IsEmpty())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Found Null Data");
+		return;
+	}
+	if (PointsLoc.Num() != PointsTangent.Num() || PointsTangent.Num() != PointsRotator.Num())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Non-Homogeneous Data");
+		return;
+	}
+	//开始添加Component
+	GEditor->BeginTransaction(TEXT("AddSpline"), FText(), nullptr);
+	UKismetSystemLibrary::TransactObject(TargetActor);
+	USubobjectDataSubsystem* AddCompSubSystem = GEngine->GetEngineSubsystem<USubobjectDataSubsystem>();
+	TArray<FSubobjectDataHandle> SubObjectData;
+	AddCompSubSystem->GatherSubobjectData(TargetActor, SubObjectData);
+	FAddNewSubobjectParams SplineObjectParam;
+	SplineObjectParam.ParentHandle = SubObjectData[0];
+	SplineObjectParam.NewClass = USplineComponent::StaticClass();
+	FText FailReason;
+	FSubobjectDataHandle AddHandled = AddCompSubSystem->AddNewSubobject(SplineObjectParam, FailReason);
+	if (!AddHandled.IsValid())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner(FailReason.ToString());
+		return;
+	}
+	const USplineComponent* ConstSplineComp = Cast<USplineComponent>(AddHandled.GetData()->GetObject());
+	USplineComponent* SplineComp = const_cast<USplineComponent*>(ConstSplineComp);
+
+
+	for (int i = 0; i < PointsLoc.Num(); ++i)
+	{
+		SplineComp->AddSplinePoint(PointsLoc[i], ESplineCoordinateSpace::Local, false);
+		SplineComp->SetTangentAtSplinePoint(i, PointsTangent[i], ESplineCoordinateSpace::Local, false);
+		SplineComp->SetSplinePointType(i, ESplinePointType::Type(PointsType[i]), false);
+		SplineComp->SetRotationAtSplinePoint(i, PointsRotator[i], ESplineCoordinateSpace::Local, false);
+	}
+
+	SplineComp->UpdateSpline();
 }
 
 
@@ -366,7 +452,7 @@ void UCityGeneratorSubSystem::GenerateSingleRoadBySweep(const USplineComponent* 
 	FVector SplineLocation = TargetSpline->GetLocationAtSplineInputKey(0, ESplineCoordinateSpace::World);
 }
 
-TObjectPtr<UObject> UCityGeneratorSubSystem::GetEditorContext() const
+TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 {
 	UUnrealEditorSubsystem* EditorSubsystem = GEditor->GetEditorSubsystem<UUnrealEditorSubsystem>();
 	ensureMsgf(EditorSubsystem!=nullptr, TEXT("Get EditorSubsystem Failed,Please Check"));
