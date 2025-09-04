@@ -44,14 +44,13 @@ public:
 	                        bool bAutoCollectAfterSpawn = false);
 
 
-	TObjectPtr<AActor> SpawnActorWithSplineComp(const FString& ActorName, const FTransform& ActorTrans,
-	                                            const TArray<int32>& PointsType, const TArray<FVector>& PointsLoc,
-	                                            const TArray<FVector>& PointTangent,
-	                                            const TArray<FRotator>& PointRotator);
+	TObjectPtr<AActor> SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans);
 
 	void AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
 	                               const TArray<FVector>& PointsLoc,
-	                               const TArray<FVector>& PointTangent, const TArray<FRotator>& PointRotator);
+	                               const TArray<FVector>& PointTangent, const TArray<FRotator>& PointRotator,const bool bIsCloseLoop);
+
+	TObjectPtr<UActorComponent> AddComponentInEditor(AActor*TargetActor,TSubclassOf<UActorComponent> TargetComponentClass);
 #pragma endregion Base
 
 	UFUNCTION(BlueprintCallable)

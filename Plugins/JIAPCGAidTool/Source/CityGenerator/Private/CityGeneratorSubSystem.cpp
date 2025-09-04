@@ -9,6 +9,7 @@
 #include  "SubobjectData.h"
 #include "Components/SplineComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Subsystems/UnrealEditorSubsystem.h"
 
 void UCityGeneratorSubSystem::CollectAllSplines(const FName OptionalActorTag/*=""*/, const FName OptionalCompTag/*=""*/)
@@ -91,6 +92,8 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 			                                                           *FileName)))
 		{
 			bFileExited = false;
+			IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+			PlatformFile.DeleteFile(*TargetDir);
 		}
 	}
 	if (bFileExited)
@@ -195,7 +198,7 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 			TSharedPtr<FJsonObject> SinglePointData(new FJsonObject());
 			int32 PointType = TargetSpline->GetSplinePointType(i);
 			SinglePointData->SetNumberField(TEXT("PointType"), PointType);
-			
+
 			SinglePointData->SetNumberField(TEXT("Location.X"), PointsLoc[i].X);
 			SinglePointData->SetNumberField(TEXT("Location.Y"), PointsLoc[i].Y);
 			SinglePointData->SetNumberField(TEXT("Location.Z"), PointsLoc[i].Z);
@@ -210,6 +213,7 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 			SingleSplinePointsArray.Emplace(MakeShareable(new FJsonValueObject(SinglePointData)));
 		}
 		SingleSplineData->SetArrayField(TEXT("Points"), SingleSplinePointsArray);
+		SingleSplineData->SetBoolField(TEXT("bCloseLoop"), TargetSpline->IsClosedLoop());
 		SplineDataArray.Emplace(MakeShareable(new FJsonValueObject(SingleSplineData)));
 		SplineCounter++;
 	}
@@ -352,23 +356,25 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Yaw"), PointRot.Yaw);
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Pitch"), PointRot.Pitch);
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Roll"), PointRot.Roll);
+			//处理Owner缩放对Spline的影响
+			PointLoc = UKismetMathLibrary::TransformLocation(OwnerTransform, PointLoc);
 			PointsType.Emplace(PointType);
 			PointsLoc.Emplace(PointLoc);
 			PointsTan.Emplace(PointTan);
 			PointsRot.Emplace(PointRot);
 		}
+		bool bIsCloseLoop = false;
+		SingleSplineData->TryGetBoolField(TEXT("bCloseLoop"), bIsCloseLoop);
 		//@TODO：后续看量改成分帧处理
-		if (SpawnedActors.Contains(OwnerActorGuid))
+		if (!SpawnedActors.Contains(OwnerActorGuid))
 		{
-			AddSplineCompToExistActor(SpawnedActors[OwnerActorGuid], PointsType, PointsLoc, PointsTan, PointsRot);
+			TObjectPtr<AActor> SplineActor = SpawnEmptyActor(OwnerActorName, OwnerTransform);
+			//Actor可以没有SceneComponent，所以之前的Transform可能没设置成功
+			SplineActor->SetActorTransform(OwnerTransform);
+			SpawnedActors.Emplace(OwnerActorGuid, SplineActor);
 		}
-		else
-		{
-			SpawnedActors.Emplace(OwnerActorGuid,
-			                      SpawnActorWithSplineComp(OwnerActorName, OwnerTransform, PointsType, PointsLoc,
-			                                               PointsTan,
-			                                               PointsRot));
-		}
+		AddSplineCompToExistActor(SpawnedActors[OwnerActorGuid], PointsType, PointsLoc, PointsTan, PointsRot,
+		                          bIsCloseLoop);
 	};
 	if (bAutoCollectAfterSpawn)
 	{
@@ -376,27 +382,24 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 	}
 }
 
-TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnActorWithSplineComp(const FString& ActorName,
-                                                                     const FTransform& ActorTrans,
-                                                                     const TArray<int32>& PointsType,
-                                                                     const TArray<FVector>& PointsLoc,
-                                                                     const TArray<FVector>& PointTangent,
-                                                                     const TArray<FRotator>& PointRotator)
+TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans)
 {
 	FActorSpawnParameters SpawnParams;
-	SpawnParams.Name=FName(*ActorName);
+	//SpawnParams.Name=FName(*ActorName);
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	TObjectPtr<AActor> ActorWithSplineComp = GetEditorContext()->SpawnActor<AActor>(
+	TObjectPtr<AActor> NewActor = GetEditorContext()->SpawnActor<AActor>(
 		AActor::StaticClass(), ActorTrans, SpawnParams);
-	AddSplineCompToExistActor(ActorWithSplineComp, PointsType, PointsLoc, PointTangent, PointRotator);
-	ActorWithSplineComp->SetActorLabel(ActorName);
-	return ActorWithSplineComp;
+	TObjectPtr<UActorComponent> SceneComp = AddComponentInEditor(NewActor, USceneComponent::StaticClass());
+	TObjectPtr<USceneComponent> RootComp = Cast<USceneComponent>(SceneComp);
+	NewActor->SetRootComponent(RootComp);
+	NewActor->SetActorLabel(ActorName);
+	return NewActor;
 }
 
 void UCityGeneratorSubSystem::AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
                                                         const TArray<FVector>& PointsLoc,
                                                         const TArray<FVector>& PointsTangent,
-                                                        const TArray<FRotator>& PointsRotator)
+                                                        const TArray<FRotator>& PointsRotator, const bool bIsCloseLoop)
 {
 	//有效性检查
 	if (nullptr == TargetActor)
@@ -414,35 +417,52 @@ void UCityGeneratorSubSystem::AddSplineCompToExistActor(TObjectPtr<AActor> Targe
 		UNotifyUtilities::ShowPopupMsgAtCorner("Non-Homogeneous Data");
 		return;
 	}
-	//开始添加Component
-	GEditor->BeginTransaction(TEXT("AddSpline"), FText(), nullptr);
+
+
+	USplineComponent* SplineComp = Cast<USplineComponent>(
+		AddComponentInEditor(TargetActor, USplineComponent::StaticClass()));
+
+	SplineComp->SetSplinePoints(PointsLoc, ESplineCoordinateSpace::Local, false);
+	for (int i = 0; i < PointsLoc.Num(); ++i)
+	{
+		SplineComp->SetTangentAtSplinePoint(i, PointsTangent[i], ESplineCoordinateSpace::Local, false);
+		SplineComp->SetRotationAtSplinePoint(i, PointsRotator[i], ESplineCoordinateSpace::Local, false);
+		//设置Tangent会覆盖Type，必须放在后边
+		ESplinePointType::Type PointType = ESplinePointType::Type(PointsType[i]);
+		SplineComp->SetSplinePointType(i, PointType, true);
+	}
+	SplineComp->SetClosedLoop(bIsCloseLoop);
+	SplineComp->UpdateSpline();
+}
+
+TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor* TargetActor,
+                                                                          TSubclassOf<UActorComponent>
+                                                                          TargetComponentClass)
+{
+	//有效性检查
+	if (nullptr == TargetActor)
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Null Actor Passed In");
+		return nullptr;
+	}
+	GEditor->BeginTransaction(TEXT("AddComponent"), FText(), nullptr);
 	UKismetSystemLibrary::TransactObject(TargetActor);
 	USubobjectDataSubsystem* AddCompSubSystem = GEngine->GetEngineSubsystem<USubobjectDataSubsystem>();
 	TArray<FSubobjectDataHandle> SubObjectData;
 	AddCompSubSystem->GatherSubobjectData(TargetActor, SubObjectData);
-	FAddNewSubobjectParams SplineObjectParam;
-	SplineObjectParam.ParentHandle = SubObjectData[0];
-	SplineObjectParam.NewClass = USplineComponent::StaticClass();
+	FAddNewSubobjectParams NewCompParam;
+	NewCompParam.ParentHandle = SubObjectData[0];
+	NewCompParam.NewClass = TargetComponentClass;
 	FText FailReason;
-	FSubobjectDataHandle AddHandled = AddCompSubSystem->AddNewSubobject(SplineObjectParam, FailReason);
+	FSubobjectDataHandle AddHandled = AddCompSubSystem->AddNewSubobject(NewCompParam, FailReason);
 	if (!AddHandled.IsValid())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(FailReason.ToString());
-		return;
+		return nullptr;
 	}
-	const USplineComponent* ConstSplineComp = Cast<USplineComponent>(AddHandled.GetData()->GetObject());
-	USplineComponent* SplineComp = const_cast<USplineComponent*>(ConstSplineComp);
+	const UActorComponent* ConstNewComp = Cast<UActorComponent>(AddHandled.GetData()->GetObject());
 
-
-	for (int i = 0; i < PointsLoc.Num(); ++i)
-	{
-		SplineComp->AddSplinePoint(PointsLoc[i], ESplineCoordinateSpace::Local, false);
-		SplineComp->SetTangentAtSplinePoint(i, PointsTangent[i], ESplineCoordinateSpace::Local, false);
-		SplineComp->SetSplinePointType(i, ESplinePointType::Type(PointsType[i]), false);
-		SplineComp->SetRotationAtSplinePoint(i, PointsRotator[i], ESplineCoordinateSpace::Local, false);
-	}
-
-	SplineComp->UpdateSpline();
+	return const_cast<UActorComponent*>(ConstNewComp);
 }
 
 
