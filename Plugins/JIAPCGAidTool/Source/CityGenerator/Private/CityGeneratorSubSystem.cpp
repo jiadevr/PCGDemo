@@ -371,10 +371,19 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 			TObjectPtr<AActor> SplineActor = SpawnEmptyActor(OwnerActorName, OwnerTransform);
 			//Actor可以没有SceneComponent，所以之前的Transform可能没设置成功
 			SplineActor->SetActorTransform(OwnerTransform);
+			if (bTryParseActorTag && !ActorTags.IsEmpty())
+			{
+				SplineActor->Tags = ActorTags;
+			}
 			SpawnedActors.Emplace(OwnerActorGuid, SplineActor);
 		}
-		AddSplineCompToExistActor(SpawnedActors[OwnerActorGuid], PointsType, PointsLoc, PointsTan, PointsRot,
-		                          bIsCloseLoop);
+		TObjectPtr<USplineComponent> NewSplineComp = AddSplineCompToExistActor(
+			SpawnedActors[OwnerActorGuid], PointsType, PointsLoc, PointsTan, PointsRot,
+			bIsCloseLoop);
+		if (NewSplineComp!=nullptr&&bTryParseCompTag && !SplineCompTags.IsEmpty())
+		{
+			NewSplineComp->ComponentTags=SplineCompTags;
+		}
 	};
 	if (bAutoCollectAfterSpawn)
 	{
@@ -396,26 +405,27 @@ TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnEmptyActor(const FString& Actor
 	return NewActor;
 }
 
-void UCityGeneratorSubSystem::AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
-                                                        const TArray<FVector>& PointsLoc,
-                                                        const TArray<FVector>& PointsTangent,
-                                                        const TArray<FRotator>& PointsRotator, const bool bIsCloseLoop)
+TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
+	TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
+	const TArray<FVector>& PointsLoc,
+	const TArray<FVector>& PointsTangent,
+	const TArray<FRotator>& PointsRotator, const bool bIsCloseLoop)
 {
 	//有效性检查
 	if (nullptr == TargetActor)
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Null Actor Passed In");
-		return;
+		return nullptr;
 	}
 	if (PointsLoc.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Found Null Data");
-		return;
+		return nullptr;
 	}
 	if (PointsLoc.Num() != PointsTangent.Num() || PointsTangent.Num() != PointsRotator.Num())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Non-Homogeneous Data");
-		return;
+		return nullptr;
 	}
 
 
@@ -433,6 +443,7 @@ void UCityGeneratorSubSystem::AddSplineCompToExistActor(TObjectPtr<AActor> Targe
 	}
 	SplineComp->SetClosedLoop(bIsCloseLoop);
 	SplineComp->UpdateSpline();
+	return SplineComp;
 }
 
 TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor* TargetActor,
