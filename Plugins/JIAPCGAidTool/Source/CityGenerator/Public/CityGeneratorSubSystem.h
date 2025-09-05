@@ -68,10 +68,12 @@ public:
 	 * @param PointRotator 点旋转数组
 	 * @param bIsCloseLoop 是否闭合样条
 	 */
-	TObjectPtr<USplineComponent> AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
-	                               const TArray<FVector>& PointsLoc,
-	                               const TArray<FVector>& PointTangent, const TArray<FRotator>& PointRotator,
-	                               const bool bIsCloseLoop);
+	TObjectPtr<USplineComponent> AddSplineCompToExistActor(TObjectPtr<AActor> TargetActor,
+	                                                       const TArray<int32>& PointsType,
+	                                                       const TArray<FVector>& PointsLoc,
+	                                                       const TArray<FVector>& PointTangent,
+	                                                       const TArray<FRotator>& PointRotator,
+	                                                       const bool bIsCloseLoop);
 
 	/**
 	 * 辅助函数，在编辑器中为Actor添加指定类型的Component
@@ -81,14 +83,17 @@ public:
 	 */
 	TObjectPtr<UActorComponent> AddComponentInEditor(AActor* TargetActor,
 	                                                 TSubclassOf<UActorComponent> TargetComponentClass);
-#pragma endregion Base
 
+protected:
+	TObjectPtr<UWorld> GetEditorContext() const;
+#pragma endregion Base
+	
+#pragma region GenerateRoad
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(const USplineComponent* TargetSpline, const TArray<FVector2D>& SweepShape);
+#pragma endregion GenerateRoad
 
 protected:
 	UPROPERTY()
 	TArray<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineArray;
-
-	TObjectPtr<UWorld> GetEditorContext() const;
 };

@@ -12,6 +12,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Subsystems/UnrealEditorSubsystem.h"
 
+#pragma region  Base
 void UCityGeneratorSubSystem::CollectAllSplines(const FName OptionalActorTag/*=""*/, const FName OptionalCompTag/*=""*/)
 {
 	TArray<AActor*> PotentialActors;
@@ -357,7 +358,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Pitch"), PointRot.Pitch);
 			SinglePointData->TryGetNumberField(TEXT("Rotation.Roll"), PointRot.Roll);
 			//处理Owner缩放对Spline的影响
-			PointLoc = UKismetMathLibrary::TransformLocation(OwnerTransform, PointLoc);
+			//PointLoc = UKismetMathLibrary::TransformLocation(OwnerTransform, PointLoc);
 			PointsType.Emplace(PointType);
 			PointsLoc.Emplace(PointLoc);
 			PointsTan.Emplace(PointTan);
@@ -380,9 +381,9 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 		TObjectPtr<USplineComponent> NewSplineComp = AddSplineCompToExistActor(
 			SpawnedActors[OwnerActorGuid], PointsType, PointsLoc, PointsTan, PointsRot,
 			bIsCloseLoop);
-		if (NewSplineComp!=nullptr&&bTryParseCompTag && !SplineCompTags.IsEmpty())
+		if (NewSplineComp != nullptr && bTryParseCompTag && !SplineCompTags.IsEmpty())
 		{
-			NewSplineComp->ComponentTags=SplineCompTags;
+			NewSplineComp->ComponentTags = SplineCompTags;
 		}
 	};
 	if (bAutoCollectAfterSpawn)
@@ -456,7 +457,8 @@ TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor
 		UNotifyUtilities::ShowPopupMsgAtCorner("Null Actor Passed In");
 		return nullptr;
 	}
-	GEditor->BeginTransaction(TEXT("AddComponent"), FText(), nullptr);
+	//实现方法1
+	/*GEditor->BeginTransaction(TEXT("AddComponent"), FText(), nullptr);
 	UKismetSystemLibrary::TransactObject(TargetActor);
 	USubobjectDataSubsystem* AddCompSubSystem = GEngine->GetEngineSubsystem<USubobjectDataSubsystem>();
 	TArray<FSubobjectDataHandle> SubObjectData;
@@ -472,16 +474,22 @@ TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor
 		return nullptr;
 	}
 	const UActorComponent* ConstNewComp = Cast<UActorComponent>(AddHandled.GetData()->GetObject());
-
-	return const_cast<UActorComponent*>(ConstNewComp);
+	GEditor->EndTransaction();
+	return const_cast<UActorComponent*>(ConstNewComp);*/
+	//实现方法2（https://forums.unrealengine.com/t/add-component-to-actor-in-c-the-final-word/646838/9）
+	TargetActor->Modify();
+	TObjectPtr<UActorComponent> NewComponent = NewObject<UActorComponent>(TargetActor,TargetComponentClass);
+	NewComponent->OnComponentCreated();
+	TObjectPtr<USceneComponent> NewComponentAsSceneComp = Cast<USceneComponent>(NewComponent);
+	if (nullptr!=NewComponentAsSceneComp)
+	{
+		NewComponentAsSceneComp->AttachToComponent(TargetActor->GetRootComponent(),FAttachmentTransformRules::SnapToTargetIncludingScale);
+	}
+	NewComponent->RegisterComponent();
+	TargetActor->AddInstanceComponent(NewComponent);
+	return NewComponent;
 }
 
-
-void UCityGeneratorSubSystem::GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
-                                                        const TArray<FVector2D>& SweepShape)
-{
-	FVector SplineLocation = TargetSpline->GetLocationAtSplineInputKey(0, ESplineCoordinateSpace::World);
-}
 
 TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 {
@@ -489,3 +497,12 @@ TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 	ensureMsgf(EditorSubsystem!=nullptr, TEXT("Get EditorSubsystem Failed,Please Check"));
 	return EditorSubsystem->GetEditorWorld();
 }
+#pragma endregion  Base
+
+#pragma region GenerateRoad
+void UCityGeneratorSubSystem::GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
+                                                        const TArray<FVector2D>& SweepShape)
+{
+	FVector SplineLocation = TargetSpline->GetLocationAtSplineInputKey(0, ESplineCoordinateSpace::World);
+}
+#pragma endregion GenerateRoad
