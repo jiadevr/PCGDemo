@@ -86,11 +86,20 @@ public:
 
 protected:
 	TObjectPtr<UWorld> GetEditorContext() const;
+
+
 #pragma endregion Base
-	
+
 #pragma region GenerateRoad
+
+public:
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(const USplineComponent* TargetSpline, const TArray<FVector2D>& SweepShape);
+
+	UPROPERTY(BlueprintReadWrite)
+	float CurveResampleLengthInCM = 500.0f;
+
+	TArray<FTransform> ResampleSamplePoint(const USplineComponent* TargetSpline,double StartShrink=0.0,double EndShrink=0.0);
 #pragma endregion GenerateRoad
 
 protected:

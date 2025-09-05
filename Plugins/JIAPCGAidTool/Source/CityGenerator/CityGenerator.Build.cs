@@ -28,7 +28,9 @@ public class CityGenerator : ModuleRules
 				"EditorScriptingUtilities",
 				"Json",
 				"JsonUtilities",
-				"SubobjectDataInterface"
+				"SubobjectDataInterface",
+				"GeometryFramework",
+                "GeometryScriptingCore"
 			}
 		);
 	}
