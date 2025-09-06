@@ -7,6 +7,7 @@
 
 #include "CityGeneratorSubSystem.generated.h"
 
+class URoadGeneratorSubsystem;
 class USplineComponent;
 /**
  * 
@@ -51,13 +52,13 @@ public:
 	                        bool bAutoCollectAfterSpawn = false);
 
 
-	/**
-	 * 辅助函数，生成带有SceneComponent的空Actor
-	 * @param ActorName ActorLable
-	 * @param ActorTrans Transform
-	 * @return 返回生成的对象
-	 */
-	TObjectPtr<AActor> SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans);
+	// /**
+	//  * 辅助函数，生成带有SceneComponent的空Actor
+	//  * @param ActorName ActorLable
+	//  * @param ActorTrans Transform
+	//  * @return 返回生成的对象
+	//  */
+	// TObjectPtr<AActor> SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans);
 
 	/**
 	 * 向已经存在的Actor添加SplineComponent并设置其参数
@@ -75,34 +76,34 @@ public:
 	                                                       const TArray<FRotator>& PointRotator,
 	                                                       const bool bIsCloseLoop);
 
-	/**
-	 * 辅助函数，在编辑器中为Actor添加指定类型的Component
-	 * @param TargetActor 目标Actor
-	 * @param TargetComponentClass 需要添加的Component类型 
-	 * @return 返回ActorComponent，根据需要Cast
-	 */
-	TObjectPtr<UActorComponent> AddComponentInEditor(AActor* TargetActor,
-	                                                 TSubclassOf<UActorComponent> TargetComponentClass);
+	// /**
+	//  * 辅助函数，在编辑器中为Actor添加指定类型的Component
+	//  * @param TargetActor 目标Actor
+	//  * @param TargetComponentClass 需要添加的Component类型 
+	//  * @return 返回ActorComponent，根据需要Cast
+	//  */
+	// TObjectPtr<UActorComponent> AddComponentInEditor(AActor* TargetActor,
+	//                                                  TSubclassOf<UActorComponent> TargetComponentClass);
 
 protected:
 	TObjectPtr<UWorld> GetEditorContext() const;
 
 
 #pragma endregion Base
-
 #pragma region GenerateRoad
-
 public:
 	UFUNCTION(BlueprintCallable)
-	void GenerateSingleRoadBySweep(const USplineComponent* TargetSpline, const TArray<FVector2D>& SweepShape);
+	void GenerateRoads(const USplineComponent* TargetSpline=nullptr);
+protected:
+	UPROPERTY()
+	TWeakObjectPtr<URoadGeneratorSubsystem> RoadSubsystem;
 
-	UPROPERTY(BlueprintReadWrite)
-	float CurveResampleLengthInCM = 500.0f;
-
-	TArray<FTransform> ResampleSamplePoint(const USplineComponent* TargetSpline,double StartShrink=0.0,double EndShrink=0.0);
+	TWeakObjectPtr<URoadGeneratorSubsystem> GetRoadGeneratorSystem();
 #pragma endregion GenerateRoad
 
 protected:
 	UPROPERTY()
 	TArray<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineArray;
+
+	
 };

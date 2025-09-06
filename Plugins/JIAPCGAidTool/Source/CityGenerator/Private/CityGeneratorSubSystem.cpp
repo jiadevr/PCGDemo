@@ -3,7 +3,9 @@
 
 #include "CityGeneratorSubSystem.h"
 
+#include "EditorComponentUtilities.h"
 #include "NotifyUtilities.h"
+#include "RoadGeneratorSubsystem.h"
 #include "SubobjectDataSubsystem.h"
 #include "SubobjectDataHandle.h"
 #include  "SubobjectData.h"
@@ -372,7 +374,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 		//@TODO：后续看量改成分帧处理
 		if (!SpawnedActors.Contains(OwnerActorGuid))
 		{
-			TObjectPtr<AActor> SplineActor = SpawnEmptyActor(OwnerActorName, OwnerTransform);
+			TObjectPtr<AActor> SplineActor = UEditorComponentUtilities::SpawnEmptyActor(OwnerActorName, OwnerTransform);
 			//SplineActor->SetActorTransform(OwnerTransform);
 			if (bTryParseActorTag && !ActorTags.IsEmpty())
 			{
@@ -394,7 +396,7 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 	}
 }
 
-TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans)
+/*TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans)
 {
 	FActorSpawnParameters SpawnParams;
 	//SpawnParams.Name=FName(*ActorName);
@@ -407,7 +409,7 @@ TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnEmptyActor(const FString& Actor
 	NewActor->SetActorLabel(ActorName);
 	NewActor->SetActorTransform(ActorTrans);
 	return NewActor;
-}
+}*/
 
 TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 	TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
@@ -434,7 +436,7 @@ TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 
 
 	USplineComponent* SplineComp = Cast<USplineComponent>(
-		AddComponentInEditor(TargetActor, USplineComponent::StaticClass()));
+		UEditorComponentUtilities::AddComponentInEditor(TargetActor, USplineComponent::StaticClass()));
 
 	SplineComp->SetSplinePoints(PointsLoc, ESplineCoordinateSpace::Local, false);
 	for (int i = 0; i < PointsLoc.Num(); ++i)
@@ -450,7 +452,7 @@ TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 	return SplineComp;
 }
 
-TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor* TargetActor,
+/*TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor* TargetActor,
                                                                           TSubclassOf<UActorComponent>
                                                                           TargetComponentClass)
 {
@@ -478,7 +480,7 @@ TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor
 	}
 	const UActorComponent* ConstNewComp = Cast<UActorComponent>(AddHandled.GetData()->GetObject());
 	GEditor->EndTransaction();
-	return const_cast<UActorComponent*>(ConstNewComp);*/
+	return const_cast<UActorComponent*>(ConstNewComp);#1#
 	//实现方法2（https://forums.unrealengine.com/t/add-component-to-actor-in-c-the-final-word/646838/9）
 	TargetActor->Modify();
 	TObjectPtr<UActorComponent> NewComponent = NewObject<UActorComponent>(TargetActor, TargetComponentClass);
@@ -492,7 +494,7 @@ TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor
 	NewComponent->RegisterComponent();
 	TargetActor->AddInstanceComponent(NewComponent);
 	return NewComponent;
-}
+}*/
 
 
 TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
@@ -501,10 +503,47 @@ TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 	ensureMsgf(EditorSubsystem!=nullptr, TEXT("Get EditorSubsystem Failed,Please Check"));
 	return EditorSubsystem->GetEditorWorld();
 }
-#pragma endregion  Base
+
 
 #pragma region GenerateRoad
-void UCityGeneratorSubSystem::GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
+void UCityGeneratorSubSystem::GenerateRoads(const USplineComponent* TargetSpline)
+{
+	if (nullptr == TargetSpline)
+	{
+		EAppReturnType::Type UserChoice = UNotifyUtilities::ShowMsgDialog(EAppMsgType::YesNo,
+		                                                                  "Select None SplineComp,Click [Yes] To Generate All,Click [No] To Quit",
+		                                                                  true);
+		if (UserChoice == EAppReturnType::Yes)
+		{
+			CollectAllSplines();
+			for (const TWeakObjectPtr<USplineComponent>& SplineComponent : CityGeneratorSplineArray)
+			{
+				if (SplineComponent.IsValid())
+				{
+					GetRoadGeneratorSystem().Pin()->GenerateSingleRoadBySweep(SplineComponent.Pin().Get());
+				}
+			}
+		}
+
+		return;
+	}
+	GetRoadGeneratorSystem().Pin()->GenerateSingleRoadBySweep(TargetSpline);
+	return;
+}
+
+TWeakObjectPtr<URoadGeneratorSubsystem> UCityGeneratorSubSystem::GetRoadGeneratorSystem()
+{
+	if (!RoadSubsystem.IsValid())
+	{
+		RoadSubsystem = GEditor->GetEditorSubsystem<URoadGeneratorSubsystem>();
+		ensureAlwaysMsgf(RoadSubsystem.IsValid(), TEXT("Find Null RoadGeneratorSubsystem"));
+	}
+	return RoadSubsystem;
+}
+
+
+#pragma endregion  Base
+/*void UCityGeneratorSubSystem::GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
                                                         const TArray<FVector2D>& SweepShape)
 {
 	if (nullptr == TargetSpline || nullptr == TargetSpline->GetOwner())
@@ -543,6 +582,14 @@ TArray<FTransform> UCityGeneratorSubSystem::ResampleSamplePoint(const USplineCom
 	TArray<FTransform> ResamplePointsOnSpline{FTransform::Identity};
 	if (nullptr != TargetSpline)
 	{
+		//直线和曲线有不同的差值策略
+		//点属性管理的是后边一段
+		const int32 OriginControlPoints=TargetSpline->GetNumberOfSplinePoints();
+		for (int i = 0; i < OriginControlPoints; ++i)
+		{
+			ESplinePointType::Type PointType=TargetSpline->GetSplinePointType()
+		}
+		
 		double ResampleSplineLength = TargetSpline->GetSplineLength() - StartShrink - EndShrink;
 		int32 ResamplePointCount = FMath::CeilToInt(ResampleSplineLength / CurveResampleLengthInCM);
 		//double ActualResampleLengthInCM = ResampleSplineLength / ResamplePointCount;
@@ -567,8 +614,8 @@ TArray<FTransform> UCityGeneratorSubSystem::ResampleSamplePoint(const USplineCom
 			{
 				PointsOnSpline.SetLocation(UKismetMathLibrary::TransformLocation(ActorTrans, PointsOnSpline.GetLocation()));
 			}
-		}*/
+		}#1#
 	}
 	return MoveTemp(ResamplePointsOnSpline);
-}
+}*/
 #pragma endregion GenerateRoad
