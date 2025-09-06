@@ -68,8 +68,13 @@ public:
 	UPROPERTY(BlueprintReadWrite)
 	float CurveResampleLengthInCM = 500.0f;
 
-	TArray<FTransform> ResampleSamplePoint(const USplineComponent* TargetSpline, double StartShrink = 0.0,
+	float GetSplineSegmentLength(const USplineComponent* TargetSpline,int32 StartPointIndex);
+
+	bool ResampleSamplePoint(const USplineComponent* TargetSpline,TArray<FTransform>& OutResampledTransform, double StartShrink = 0.0,
 	                                       double EndShrink = 0.0);
+
+	UFUNCTION(BlueprintCallable)
+	TArray<FVector> TestNativeSubdivisionFunction(const USplineComponent* TargetSpline);
 
 	TArray<FVector> IntersectionLocation;
 
