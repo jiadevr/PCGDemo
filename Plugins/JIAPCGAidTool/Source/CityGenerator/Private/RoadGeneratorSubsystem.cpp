@@ -47,8 +47,9 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(const USplineComponent* 
 	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
 	FTransform SweepMeshTrans = FTransform::Identity;
 	int32 ControlPointsCount = TargetSpline->GetNumberOfSplinePoints();
-	TArray<FTransform> SweepPath = ResampleSamplePoint(TargetSpline);
-	TArray<FVector2D> SweepShape=RoadPresetMap[LaneTypeEnum].CrossSectionCoord;
+	TArray<FTransform> SweepPath;
+	ResampleSamplePoint(TargetSpline, SweepPath, RoadPresetMap[LaneTypeEnum].SampleLength);
+	TArray<FVector2D> SweepShape = RoadPresetMap[LaneTypeEnum].CrossSectionCoord;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(DynamicMesh, GeometryScriptOptions,
 	                                                                  SweepMeshTrans, SweepShape, SweepPath);
 	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(DynamicMesh);
@@ -57,19 +58,91 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(const USplineComponent* 
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(DynamicMesh, SplitOptions, CalculateOptions);
 }
 
-TArray<FTransform> URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* TargetSpline,
-                                                                double StartShrink, double EndShrink)
+float URoadGeneratorSubsystem::GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 StartPointIndex)
+{
+	if (StartPointIndex <= 0 || StartPointIndex >= TargetSpline->GetNumberOfSplinePoints())
+	{
+		return 0;
+	}
+	if (StartPointIndex == TargetSpline->GetNumberOfSplinePoints() - 1)
+	{
+		if (TargetSpline->IsClosedLoop())
+		{
+			return TargetSpline->GetSplineLength() - TargetSpline->GetDistanceAlongSplineAtSplinePoint(StartPointIndex);
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	return TargetSpline->GetDistanceAlongSplineAtSplinePoint(StartPointIndex) - TargetSpline->
+		GetDistanceAlongSplineAtSplinePoint(StartPointIndex - 1);
+}
+
+bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* TargetSpline,
+                                                  TArray<FTransform>& OutResampledTransform,
+                                                  const float MaxResampleDistance,
+                                                  double StartShrink, double EndShrink)
 {
 	TArray<FTransform> ResamplePointsOnSpline{FTransform::Identity};
+
 	if (nullptr != TargetSpline)
 	{
 		//直线和曲线有不同的差值策略
-		//点属性管理的是后边一段
-		const int32 OriginControlPoints = TargetSpline->GetNumberOfSplinePoints();
-		for (int i = 0; i < OriginControlPoints; ++i)
+		//点属性管理的是后边一段，直线部分不应该插值；
+		const int32 OriginalControlPoints = TargetSpline->GetNumberOfSplinePoints();
+		ResamplePointsOnSpline.Reserve(OriginalControlPoints);
+		//处理第一个点
+		int32 NextIndex = 0;
+		FTransform FirstTransform = TargetSpline->GetTransformAtSplinePoint(0, ESplineCoordinateSpace::Local, true);
+		if (StartShrink > 0.0)
 		{
-			//ESplinePointType::Type PointType=TargetSpline->GetSplinePointType()
+			while (StartShrink > TargetSpline->GetDistanceAlongSplineAtSplinePoint(NextIndex) && NextIndex <
+				TargetSpline->GetNumberOfSplinePoints())
+			{
+				NextIndex++;
+			}
+			if (NextIndex >= TargetSpline->GetNumberOfSplinePoints())
+			{
+				UNotifyUtilities::ShowPopupMsgAtCorner("Shrink Value Longer Than SplineValue,InValid Spline");
+				return false;
+			}
+			FirstTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+				StartShrink, ESplineCoordinateSpace::Local, true);
 		}
+		//@TODO:这里需要检查是直接结尾添加还是从头添加
+		ResamplePointsOnSpline.Emplace(FirstTransform);
+		//检查是否跳过点
+		if (NextIndex > 0)
+		{
+			ESplinePointType::Type PreviousPointType = TargetSpline->GetSplinePointType(NextIndex - 1);
+			//如果进行了跳点，检查跳过点到下一个点之间的
+			if (PreviousPointType != ESplinePointType::Linear)
+			{
+				TArray<FVector> SubdivisionLocations;
+				//下面这个函数可以给相邻分段加细分采样点
+				TargetSpline->ConvertSplineSegmentToPolyLine(NextIndex - 1, ESplineCoordinateSpace::Local,
+				                                             MaxResampleDistance, SubdivisionLocations);
+				//仅保留在Shrink之后的点
+				for (const FVector& SubdivisionLocation : SubdivisionLocations)
+				{
+					float DisOfSubdivisionPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
+						SubdivisionLocation, ESplineCoordinateSpace::Local);
+					if (DisOfSubdivisionPoint >= StartShrink + 0.25 * MaxResampleDistance)
+					{
+						ResamplePointsOnSpline.Emplace(
+							TargetSpline->GetTransformAtDistanceAlongSpline(
+								DisOfSubdivisionPoint, ESplineCoordinateSpace::Local, true));
+					}
+				}
+			}
+		}
+		//处理最后一个点
+		
+		for (int i = NextIndex; i < OriginalControlPoints; ++i)
+		{
+		}
+		//后处理，对shou'wei
 
 		double ResampleSplineLength = TargetSpline->GetSplineLength() - StartShrink - EndShrink;
 		int32 ResamplePointCount = FMath::CeilToInt(ResampleSplineLength / CurveResampleLengthInCM);
@@ -98,7 +171,15 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSamplePoint(const USplineCom
 			}
 		}*/
 	}
-	return MoveTemp(ResamplePointsOnSpline);
+	return true;
+}
+
+TArray<FVector> URoadGeneratorSubsystem::TestNativeSubdivisionFunction(const USplineComponent* TargetSpline,
+                                                                       const int32 Index)
+{
+	TArray<FVector> SubdivisionPoints;
+
+	return MoveTemp(SubdivisionPoints);
 }
 
 #pragma endregion GenerateRoad

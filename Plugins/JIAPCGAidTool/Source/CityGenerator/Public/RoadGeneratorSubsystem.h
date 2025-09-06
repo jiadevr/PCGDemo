@@ -27,20 +27,20 @@ struct FLaneMeshInfo
 public:
 	FLaneMeshInfo()
 	{
-		CrossSectionCoord=FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
+		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
 	}
 
-	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length=500.0f)
+	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length = 500.0f)
 	{
-		CrossSectionCoord=FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
-		SampleLength=Length;
+		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
+		SampleLength = Length;
 	}
-	
+
 	TArray<FVector2D> CrossSectionCoord;
 	float SampleLength = 500.0;
 
 protected:
-	static TArray<FVector2D> GetRectangle2DCoords( float Width,float Height, bool Clockwise = true)
+	static TArray<FVector2D> GetRectangle2DCoords(float Width, float Height, bool Clockwise = true)
 	{
 		TArray<FVector2D> Rectangle2DCoords;
 		Rectangle2DCoords.SetNum(4);
@@ -68,8 +68,14 @@ public:
 	UPROPERTY(BlueprintReadWrite)
 	float CurveResampleLengthInCM = 500.0f;
 
-	TArray<FTransform> ResampleSamplePoint(const USplineComponent* TargetSpline, double StartShrink = 0.0,
-	                                       double EndShrink = 0.0);
+	float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 StartPointIndex);
+
+	bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
+	                         const float MaxResampleDistance, double StartShrink = 0.0,
+	                         double EndShrink = 0.0);
+
+	UFUNCTION(BlueprintCallable)
+	TArray<FVector> TestNativeSubdivisionFunction(const USplineComponent* TargetSpline, const int32 Index);
 
 	TArray<FVector> IntersectionLocation;
 
@@ -77,6 +83,6 @@ protected:
 	UPROPERTY()
 	TMap<ELaneType, FLaneMeshInfo> RoadPresetMap;
 
-	
+
 #pragma endregion GenerateRoad
 };
