@@ -72,8 +72,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
-	                               const ELaneType LaneTypeEnum = ELaneType::SingleWay,float StartShrink=0.0f,float EndShrink=0.0f);
-	
+	                               const ELaneType LaneTypeEnum = ELaneType::SingleWay, float StartShrink = 0.0f,
+	                               float EndShrink = 0.0f);
+
 	float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 StartPointIndex);
 
 	/**
@@ -115,12 +116,13 @@ protected:
 	                                                             bool bIsClosedInterval);
 
 	/**
-	 * 当仅有两个控制点时生成直线或曲线细分点
+	 * 当仅有两个控制点时生成直线或曲线细分点，如果为闭合样条则获取往复点
 	 * @param TargetSpline 目标样条线
 	 * @param StartShrink 起始点偏移量（>=0）
 	 * @param EndShrink 终点偏移量（>=0）
 	 * @param MaxResampleDistance 最大采样距离
 	 * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
+	 * @param bIsLoop 是否为闭合样条 
 	 * @return 返回该Segment插值之后的Transform数组
 	 */
 	TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,

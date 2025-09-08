@@ -99,106 +99,99 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	}
 	StartShrink = FMath::Max(StartShrink, 0.0f);
 	EndShrink = FMath::Max(EndShrink, 0.0f);
-	//样条是否闭合
-	if (TargetSpline->IsClosedLoop())
+	//只有两个控制点
+	if (OriginalControlPoints == 2)
 	{
-		//样条闭合
-	}
-	else
-	{
-		//样条不闭合
-		if (OriginalControlPoints == 2)
+		OutResampledTransform.Empty();
+		OutResampledTransform.Reserve(2);
+		if (TargetSpline->GetSplinePointType(0) == ESplinePointType::Linear)
 		{
-			//只有一条线
-			OutResampledTransform.Empty();
-			OutResampledTransform.Reserve(2);
-			if (TargetSpline->GetSplinePointType(0) == ESplinePointType::Linear)
-			{
-				//单直线
-				OutResampledTransform.Emplace(
-					TargetSpline->GetTransformAtDistanceAlongSpline(StartShrink, ESplineCoordinateSpace::Local, true));
-				OutResampledTransform.Emplace(
-					TargetSpline->GetTransformAtDistanceAlongSpline(EndShrink, ESplineCoordinateSpace::Local, true));
-			}
-			else
-			{
-				//单曲线
-				OutResampledTransform.Append(
-					GetSubdivisionOnSingleSegment(TargetSpline, StartShrink, EndShrink, MaxResampleDistance, true));
-			}
+			//直线
+			OutResampledTransform.Emplace(
+				TargetSpline->GetTransformAtDistanceAlongSpline(StartShrink, ESplineCoordinateSpace::Local, true));
+			//往复直线完全重合，不重复生成
+			OutResampledTransform.Emplace(
+				TargetSpline->GetTransformAtDistanceAlongSpline(EndShrink, ESplineCoordinateSpace::Local, true));
 		}
 		else
 		{
-			//具有多控制点
-			ResamplePointsOnSpline.Reserve(OriginalControlPoints);
-			//处理第一个点
-			//返回ShrinkValue之后的一个点
-			FTransform FirstTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
-				StartShrink, ESplineCoordinateSpace::Local, true);
-			ResamplePointsOnSpline.Emplace(FirstTransform);
-			int32 FrontTraverseIndex = 0;
-			if (StartShrink > 0.0f)
-			{
-				while (StartShrink > TargetSpline->GetDistanceAlongSplineAtSplinePoint(FrontTraverseIndex) &&
-					FrontTraverseIndex < TargetSpline->GetNumberOfSplinePoints())
-				{
-					FrontTraverseIndex++;
-				}
-				if (FrontTraverseIndex >= TargetSpline->GetNumberOfSplinePoints())
-				{
-					UNotifyUtilities::ShowPopupMsgAtCorner("Shrink Value Longer Than SplineValue,InValid Spline");
-					return false;
-				}
-				//返回开区间。起始端点在前边加入进去了，但Shrink后一个点没有加进去
-				TArray<FTransform> StartSegment = GetSubdivisionBetweenGivenAndControlPoint(
-					TargetSpline, StartShrink, FrontTraverseIndex, false,
-					MaxResampleDistance, false);
-				ResamplePointsOnSpline.Append(StartSegment);
-			}
-			//处理最后一个点;数组中间插入性能不好，这里额外存了变量
-			TArray<FTransform> EndSegment;
-			int32 BackTraverseIndex = OriginalControlPoints - 1;
-			if (EndShrink > 0.0f)
-			{
-				const float StartToShrinkEnd = OriginalSplineLength - EndShrink;
-				while (StartToShrinkEnd < TargetSpline->GetDistanceAlongSplineAtSplinePoint(BackTraverseIndex) &&
-					BackTraverseIndex >= 0)
-				{
-					BackTraverseIndex--;
-				}
-				if (BackTraverseIndex < FrontTraverseIndex)
-				{
-					UNotifyUtilities::ShowPopupMsgAtCorner("Shrink Value Longer Than SplineValue,InValid Spline");
-					return false;
-				}
-				EndSegment.Append(GetSubdivisionBetweenGivenAndControlPoint(
-					TargetSpline, EndShrink, BackTraverseIndex, true,
-					MaxResampleDistance, false));
-			}
-			FTransform LastTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
-				(OriginalSplineLength - EndShrink), ESplineCoordinateSpace::Local, true);
-			EndSegment.Emplace(LastTransform);
-
-			for (int i = FrontTraverseIndex; i < BackTraverseIndex; ++i)
-			{
-				TArray<FVector> SubdivisionPoint;
-				TargetSpline->ConvertSplineSegmentToPolyLine(i, ESplineCoordinateSpace::Local, MaxResampleDistance,
-				                                             SubdivisionPoint);
-				//每一段取左闭右开
-				for (int j = 0; j < SubdivisionPoint.Num() - 1; ++j)
-				{
-					float DisToSubdivisionPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
-						SubdivisionPoint[j], ESplineCoordinateSpace::Local);
-					ResamplePointsOnSpline.Emplace(
-						TargetSpline->GetTransformAtDistanceAlongSpline(
-							DisToSubdivisionPoint, ESplineCoordinateSpace::Local, true));
-				}
-			}
-			//这个能集合两种情况FrontTraverseIndex!=BackTraverseIndex和FrontTraverseIndex==BackTraverseIndex
-			ResamplePointsOnSpline.Emplace(
-				TargetSpline->GetTransformAtSplinePoint(BackTraverseIndex, ESplineCoordinateSpace::Local, true));
-			ResamplePointsOnSpline.Append(EndSegment);
+			//曲线，该函数返回闭合样条返回段
+			OutResampledTransform.Append(
+				GetSubdivisionOnSingleSegment(TargetSpline, StartShrink, EndShrink, MaxResampleDistance, true));
 		}
+	}
+	//具有多控制点
+	else
+	{
+		ResamplePointsOnSpline.Reserve(OriginalControlPoints);
+		//处理第一个点
+		//返回ShrinkValue之后的一个点
+		FTransform FirstTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+			StartShrink, ESplineCoordinateSpace::Local, true);
+		ResamplePointsOnSpline.Emplace(FirstTransform);
+		int32 FrontTraverseIndex = 0;
+		if (StartShrink > 0.0f)
+		{
+			while (StartShrink > TargetSpline->GetDistanceAlongSplineAtSplinePoint(FrontTraverseIndex) &&
+				FrontTraverseIndex < TargetSpline->GetNumberOfSplinePoints())
+			{
+				FrontTraverseIndex++;
+			}
+			if (FrontTraverseIndex >= TargetSpline->GetNumberOfSplinePoints())
+			{
+				UNotifyUtilities::ShowPopupMsgAtCorner("Shrink Value Longer Than SplineValue,InValid Spline");
+				return false;
+			}
+			//返回开区间。起始端点在前边加入进去了，但Shrink后一个点没有加进去
+			TArray<FTransform> StartSegment = GetSubdivisionBetweenGivenAndControlPoint(
+				TargetSpline, StartShrink, FrontTraverseIndex, false,
+				MaxResampleDistance, false);
+			ResamplePointsOnSpline.Append(StartSegment);
+		}
+		//处理最后一个点;数组中间插入性能不好，这里额外存了变量
+		//闭合曲线在这里返回的Index值有差别
+		TArray<FTransform> EndSegment;
+		int32 BackTraverseIndex = TargetSpline->IsClosedLoop()?OriginalControlPoints:OriginalControlPoints - 1;
+		if (EndShrink > 0.0f)
+		{
+			const float StartToShrinkEnd = OriginalSplineLength - EndShrink;
+			while (StartToShrinkEnd < TargetSpline->GetDistanceAlongSplineAtSplinePoint(BackTraverseIndex) &&
+				BackTraverseIndex >= 0)
+			{
+				BackTraverseIndex--;
+			}
+			if (BackTraverseIndex < FrontTraverseIndex)
+			{
+				UNotifyUtilities::ShowPopupMsgAtCorner("Shrink Value Longer Than SplineValue,InValid Spline");
+				return false;
+			}
+			EndSegment.Append(GetSubdivisionBetweenGivenAndControlPoint(
+				TargetSpline, EndShrink, BackTraverseIndex, true,
+				MaxResampleDistance, false));
+		}
+		FTransform LastTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+			(OriginalSplineLength - EndShrink), ESplineCoordinateSpace::Local, true);
+		EndSegment.Emplace(LastTransform);
+
+		for (int i = FrontTraverseIndex; i < BackTraverseIndex; ++i)
+		{
+			TArray<FVector> SubdivisionPoint;
+			TargetSpline->ConvertSplineSegmentToPolyLine(i, ESplineCoordinateSpace::Local, MaxResampleDistance,
+			                                             SubdivisionPoint);
+			//每一段取左闭右开
+			for (int j = 0; j < SubdivisionPoint.Num() - 1; ++j)
+			{
+				float DisToSubdivisionPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
+					SubdivisionPoint[j], ESplineCoordinateSpace::Local);
+				ResamplePointsOnSpline.Emplace(
+					TargetSpline->GetTransformAtDistanceAlongSpline(
+						DisToSubdivisionPoint, ESplineCoordinateSpace::Local, true));
+			}
+		}
+		//这个能集合两种情况FrontTraverseIndex!=BackTraverseIndex和FrontTraverseIndex==BackTraverseIndex
+		ResamplePointsOnSpline.Emplace(
+			TargetSpline->GetTransformAtSplinePoint(BackTraverseIndex, ESplineCoordinateSpace::Local, true));
+		ResamplePointsOnSpline.Append(EndSegment);
 	}
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
@@ -247,7 +240,7 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControl
 			}
 			float DisOfSubdivisionPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
 				SubdivisionLocations[i], ESplineCoordinateSpace::Local);
-			//@TODO：距离可能需要进一步调整
+			//MaxResampleDistance目前在FLaneMeshInfo中配置
 			const float ThresholdValue = TargetLength + 0.25 * MaxResampleDistance;
 			if (bIsBackTraverse)
 			{
@@ -291,6 +284,7 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const 
 	{
 		return ResultTransforms;
 	}
+	//为闭合区间添加起点
 	if (bIsClosedInterval)
 	{
 		ResultTransforms.Emplace(
@@ -300,6 +294,7 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const 
 	TArray<FVector> SubdivisionLocations;
 	TargetSpline->ConvertSplineSegmentToPolyLine(0, ESplineCoordinateSpace::Local, MaxResampleDistance,
 	                                             SubdivisionLocations);
+	//样条线闭合时获取往复所有细分
 	if (TargetSpline->IsClosedLoop())
 	{
 		TArray<FVector> SubdivisionLocationsBack;
@@ -326,6 +321,7 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const 
 			}
 		}
 	}
+	//为闭合区间添加终点
 	if (bIsClosedInterval)
 	{
 		ResultTransforms.Emplace(
