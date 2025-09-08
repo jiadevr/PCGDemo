@@ -11,6 +11,7 @@
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Road/RoadDataComp.h"
 
 #pragma region GenerateRoad
 
@@ -23,7 +24,7 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 }
 
 
-void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
+void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
                                                         ELaneType LaneTypeEnum, float StartShrink, float EndShrink)
 {
 	if (nullptr == TargetSpline || nullptr == TargetSpline->GetOwner())
@@ -35,8 +36,16 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(const USplineComponent* 
 	FTransform SplineOwnerTransform = TargetSpline->GetOwner()->GetTransform();
 	SplineOwnerTransform.SetScale3D(FVector(1.0, 1.0, 1.0));
 	TObjectPtr<AActor> MeshActor = UEditorComponentUtilities::SpawnEmptyActor(SplineOwnerName, SplineOwnerTransform);
+	TObjectPtr<URoadDataComp> RoadDataComp = Cast<URoadDataComp>(
+		UEditorComponentUtilities::AddComponentInEditor(MeshActor, URoadDataComp::StaticClass()));
+	if (nullptr == RoadDataComp)
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Generate DataRecorder Failed");
+		return;
+	}
 	TObjectPtr<UDynamicMeshComponent> DynamicMeshComp = Cast<UDynamicMeshComponent>(
 		UEditorComponentUtilities::AddComponentInEditor(MeshActor, UDynamicMeshComponent::StaticClass()));
+
 	if (nullptr == DynamicMeshComp)
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Generate Mesh Failed");
@@ -50,6 +59,8 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(const USplineComponent* 
 	TArray<FTransform> SweepPath;
 	ResampleSamplePoint(TargetSpline, SweepPath, RoadPresetMap[LaneTypeEnum].SampleLength,
 	                    0.0f, 0.0f);
+	RoadDataComp->SweepPointsTrans = SweepPath;
+	RoadDataComp->ReferenceSpline = TargetSpline;
 	TArray<FVector2D> SweepShape = RoadPresetMap[LaneTypeEnum].CrossSectionCoord;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(DynamicMesh, GeometryScriptOptions,
 	                                                                  SweepMeshTrans, SweepShape, SweepPath);

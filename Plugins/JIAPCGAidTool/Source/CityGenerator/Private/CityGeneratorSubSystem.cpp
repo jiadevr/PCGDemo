@@ -506,7 +506,7 @@ TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 
 
 #pragma region GenerateRoad
-void UCityGeneratorSubSystem::GenerateRoads(const USplineComponent* TargetSpline)
+void UCityGeneratorSubSystem::GenerateRoads(USplineComponent* TargetSpline)
 {
 	if (nullptr == TargetSpline)
 	{

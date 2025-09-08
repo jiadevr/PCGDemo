@@ -64,14 +64,14 @@ class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 
 public:
 	/**
-	 * 根据样条生成扫描DynamicMeshActor
+	 * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
 	 * @param TargetSpline 目标样条线
 	 * @param LaneTypeEnum 车道种类枚举值，目前在本类构造中初始化
 	 * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
 	 * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
 	 */
 	UFUNCTION(BlueprintCallable)
-	void GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
+	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
 	                               const ELaneType LaneTypeEnum = ELaneType::SingleWay, float StartShrink = 0.0f,
 	                               float EndShrink = 0.0f);
 

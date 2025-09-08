@@ -93,7 +93,7 @@ protected:
 #pragma region GenerateRoad
 public:
 	UFUNCTION(BlueprintCallable)
-	void GenerateRoads(const USplineComponent* TargetSpline=nullptr);
+	void GenerateRoads(USplineComponent* TargetSpline=nullptr);
 protected:
 	UPROPERTY()
 	TWeakObjectPtr<URoadGeneratorSubsystem> RoadSubsystem;
