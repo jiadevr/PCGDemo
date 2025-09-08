@@ -396,20 +396,6 @@ void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bo
 	}
 }
 
-/*TObjectPtr<AActor> UCityGeneratorSubSystem::SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans)
-{
-	FActorSpawnParameters SpawnParams;
-	//SpawnParams.Name=FName(*ActorName);
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	TObjectPtr<AActor> NewActor = GetEditorContext()->SpawnActor<AActor>(
-		AActor::StaticClass(), ActorTrans, SpawnParams);
-	TObjectPtr<UActorComponent> SceneComp = AddComponentInEditor(NewActor, USceneComponent::StaticClass());
-	TObjectPtr<USceneComponent> RootComp = Cast<USceneComponent>(SceneComp);
-	NewActor->SetRootComponent(RootComp);
-	NewActor->SetActorLabel(ActorName);
-	NewActor->SetActorTransform(ActorTrans);
-	return NewActor;
-}*/
 
 TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 	TObjectPtr<AActor> TargetActor, const TArray<int32>& PointsType,
@@ -452,51 +438,6 @@ TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 	return SplineComp;
 }
 
-/*TObjectPtr<UActorComponent> UCityGeneratorSubSystem::AddComponentInEditor(AActor* TargetActor,
-                                                                          TSubclassOf<UActorComponent>
-                                                                          TargetComponentClass)
-{
-	//有效性检查
-	if (nullptr == TargetActor)
-	{
-		UNotifyUtilities::ShowPopupMsgAtCorner("Null Actor Passed In");
-		return nullptr;
-	}
-	//实现方法1
-	/*GEditor->BeginTransaction(TEXT("AddComponent"), FText(), nullptr);
-	UKismetSystemLibrary::TransactObject(TargetActor);
-	USubobjectDataSubsystem* AddCompSubSystem = GEngine->GetEngineSubsystem<USubobjectDataSubsystem>();
-	TArray<FSubobjectDataHandle> SubObjectData;
-	AddCompSubSystem->GatherSubobjectData(TargetActor, SubObjectData);
-	FAddNewSubobjectParams NewCompParam;
-	NewCompParam.ParentHandle = SubObjectData[0];
-	NewCompParam.NewClass = TargetComponentClass;
-	FText FailReason;
-	FSubobjectDataHandle AddHandled = AddCompSubSystem->AddNewSubobject(NewCompParam, FailReason);
-	if (!AddHandled.IsValid())
-	{
-		UNotifyUtilities::ShowPopupMsgAtCorner(FailReason.ToString());
-		return nullptr;
-	}
-	const UActorComponent* ConstNewComp = Cast<UActorComponent>(AddHandled.GetData()->GetObject());
-	GEditor->EndTransaction();
-	return const_cast<UActorComponent*>(ConstNewComp);#1#
-	//实现方法2（https://forums.unrealengine.com/t/add-component-to-actor-in-c-the-final-word/646838/9）
-	TargetActor->Modify();
-	TObjectPtr<UActorComponent> NewComponent = NewObject<UActorComponent>(TargetActor, TargetComponentClass);
-	NewComponent->OnComponentCreated();
-	TObjectPtr<USceneComponent> NewComponentAsSceneComp = Cast<USceneComponent>(NewComponent);
-	if (nullptr != NewComponentAsSceneComp)
-	{
-		NewComponentAsSceneComp->AttachToComponent(TargetActor->GetRootComponent(),
-		                                           FAttachmentTransformRules::SnapToTargetIncludingScale);
-	}
-	NewComponent->RegisterComponent();
-	TargetActor->AddInstanceComponent(NewComponent);
-	return NewComponent;
-}*/
-
-
 TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 {
 	UUnrealEditorSubsystem* EditorSubsystem = GEditor->GetEditorSubsystem<UUnrealEditorSubsystem>();
@@ -504,6 +445,7 @@ TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 	return EditorSubsystem->GetEditorWorld();
 }
 
+#pragma endregion  Base
 
 #pragma region GenerateRoad
 void UCityGeneratorSubSystem::GenerateRoads(USplineComponent* TargetSpline)
@@ -540,82 +482,4 @@ TWeakObjectPtr<URoadGeneratorSubsystem> UCityGeneratorSubSystem::GetRoadGenerato
 	}
 	return RoadSubsystem;
 }
-
-
-#pragma endregion  Base
-/*void UCityGeneratorSubSystem::GenerateSingleRoadBySweep(const USplineComponent* TargetSpline,
-                                                        const TArray<FVector2D>& SweepShape)
-{
-	if (nullptr == TargetSpline || nullptr == TargetSpline->GetOwner())
-	{
-		UNotifyUtilities::ShowPopupMsgAtCorner("Fail To Create SweepMesh Invalid Spline");
-		return;
-	}
-	FString SplineOwnerName = TargetSpline->GetOwner()->GetActorLabel() + "_GenMesh";
-	FTransform SplineOwnerTransform = TargetSpline->GetOwner()->GetTransform();
-	SplineOwnerTransform.SetScale3D(FVector(1.0, 1.0, 1.0));
-	TObjectPtr<AActor> MeshActor = SpawnEmptyActor(SplineOwnerName, SplineOwnerTransform);
-	TObjectPtr<UDynamicMeshComponent> DynamicMeshComp = Cast<UDynamicMeshComponent>(
-		AddComponentInEditor(MeshActor, UDynamicMeshComponent::StaticClass()));
-	if (nullptr == DynamicMeshComp)
-	{
-		UNotifyUtilities::ShowPopupMsgAtCorner("Generate Mesh Failed");
-		return;
-	}
-	UDynamicMesh* DynamicMesh = DynamicMeshComp->GetDynamicMesh();
-	DynamicMesh->Reset();
-	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
-	FTransform SweepMeshTrans = FTransform::Identity;
-	int32 ControlPointsCount = TargetSpline->GetNumberOfSplinePoints();
-	TArray<FTransform> SweepPath = ResampleSamplePoint(TargetSpline);
-	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(DynamicMesh, GeometryScriptOptions,
-	                                                                  SweepMeshTrans, SweepShape, SweepPath);
-	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(DynamicMesh);
-	FGeometryScriptSplitNormalsOptions SplitOptions;
-	FGeometryScriptCalculateNormalsOptions CalculateOptions;
-	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(DynamicMesh, SplitOptions, CalculateOptions);
-}
-
-TArray<FTransform> UCityGeneratorSubSystem::ResampleSamplePoint(const USplineComponent* TargetSpline,
-                                                                double StartShrink, double EndShrink)
-{
-	TArray<FTransform> ResamplePointsOnSpline{FTransform::Identity};
-	if (nullptr != TargetSpline)
-	{
-		//直线和曲线有不同的差值策略
-		//点属性管理的是后边一段
-		const int32 OriginControlPoints=TargetSpline->GetNumberOfSplinePoints();
-		for (int i = 0; i < OriginControlPoints; ++i)
-		{
-			ESplinePointType::Type PointType=TargetSpline->GetSplinePointType()
-		}
-		
-		double ResampleSplineLength = TargetSpline->GetSplineLength() - StartShrink - EndShrink;
-		int32 ResamplePointCount = FMath::CeilToInt(ResampleSplineLength / CurveResampleLengthInCM);
-		//double ActualResampleLengthInCM = ResampleSplineLength / ResamplePointCount;
-		ResamplePointsOnSpline.SetNum(TargetSpline->IsClosedLoop() ? ResamplePointCount + 1 : ResamplePointCount);
-		for (int32 i = 0; i < ResamplePointCount; ++i)
-		{
-			double DistanceFromSplineStart = FMath::Clamp(i * CurveResampleLengthInCM+ StartShrink,StartShrink,ResampleSplineLength+StartShrink);
-			ResamplePointsOnSpline[i] = TargetSpline->GetTransformAtDistanceAlongSpline(
-				DistanceFromSplineStart, ESplineCoordinateSpace::Local, true);
-		}
-		if (TargetSpline->IsClosedLoop())
-		{
-			FTransform ResampleStartPointTrans = TargetSpline->GetTransformAtDistanceAlongSpline(
-				StartShrink, ESplineCoordinateSpace::Local, true);
-			ResamplePointsOnSpline[ResamplePointCount]=ResampleStartPointTrans;
-		}
-		//@TODO:ActorTransform会造成影响
-		/*if (nullptr!=TargetSpline->GetOwner())
-		{
-			const FTransform ActorTrans=TargetSpline->GetOwner()->GetActorTransform();
-			for (auto& PointsOnSpline : ResamplePointsOnSpline)
-			{
-				PointsOnSpline.SetLocation(UKismetMathLibrary::TransformLocation(ActorTrans, PointsOnSpline.GetLocation()));
-			}
-		}#1#
-	}
-	return MoveTemp(ResamplePointsOnSpline);
-}*/
 #pragma endregion GenerateRoad

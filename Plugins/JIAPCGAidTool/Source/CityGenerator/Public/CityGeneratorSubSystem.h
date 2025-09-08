@@ -51,15 +51,6 @@ public:
 	void DeserializeSplines(const FString& FileFullPath, bool bTryParseActorTag = false, bool bTryParseCompTag = false,
 	                        bool bAutoCollectAfterSpawn = false);
 
-
-	// /**
-	//  * 辅助函数，生成带有SceneComponent的空Actor
-	//  * @param ActorName ActorLable
-	//  * @param ActorTrans Transform
-	//  * @return 返回生成的对象
-	//  */
-	// TObjectPtr<AActor> SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans);
-
 	/**
 	 * 向已经存在的Actor添加SplineComponent并设置其参数
 	 * @param TargetActor 目标Actor
@@ -75,15 +66,6 @@ public:
 	                                                       const TArray<FVector>& PointTangent,
 	                                                       const TArray<FRotator>& PointRotator,
 	                                                       const bool bIsCloseLoop);
-
-	// /**
-	//  * 辅助函数，在编辑器中为Actor添加指定类型的Component
-	//  * @param TargetActor 目标Actor
-	//  * @param TargetComponentClass 需要添加的Component类型 
-	//  * @return 返回ActorComponent，根据需要Cast
-	//  */
-	// TObjectPtr<UActorComponent> AddComponentInEditor(AActor* TargetActor,
-	//                                                  TSubclassOf<UActorComponent> TargetComponentClass);
 
 protected:
 	TObjectPtr<UWorld> GetEditorContext() const;
