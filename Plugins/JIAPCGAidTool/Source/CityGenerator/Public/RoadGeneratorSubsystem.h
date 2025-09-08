@@ -79,7 +79,7 @@ public:
 
 	/**
 	 * 对给定样条每一段进行重采样并整合输出，以获得Sweep所需的路径点。
-	 * 当存在Shrink时对开头、结尾、终点进行分别处理，整合算法为起点+开头开区间+中段左闭右开区间+(n-1)+结尾双开区间+终点
+	 * 当存在Shrink时对开头、结尾、终点进行分别处理，整合算法为起点+开头开区间+中段左闭右开区间+(n-1)+结尾双开区间+终点;Linear需要每一段都为闭区间
 	 * @param TargetSpline 目标样条线
 	 * @param OutResampledTransform 输出，重采样获得的Transform，非附加方式，传入后会清空再填入数据
 	 * @param MaxResampleDistance 最大采样距离
