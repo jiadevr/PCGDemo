@@ -122,7 +122,6 @@ protected:
 	 * @param EndShrink 终点偏移量（>=0）
 	 * @param MaxResampleDistance 最大采样距离
 	 * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
-	 * @param bIsLoop 是否为闭合样条 
 	 * @return 返回该Segment插值之后的Transform数组
 	 */
 	TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,
