@@ -19,8 +19,8 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	//双向四车道是2*7.5米，双向六车道是2*11.25米
-	RoadPresetMap.Emplace(ELaneType::SingleWay, FLaneMeshInfo(400.0, 20.0));
-	RoadPresetMap.Emplace(ELaneType::TwoLaneTwoWay, FLaneMeshInfo(700.0, 20.0));
+	RoadPresetMap.Emplace(ELaneType::SingleWay, FLaneMeshInfo(400.0f, 20.0f));
+	RoadPresetMap.Emplace(ELaneType::TwoLaneTwoWay, FLaneMeshInfo(700.0f, 20.0f));
 }
 
 
@@ -235,6 +235,42 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	}
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
+}
+
+void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth)
+{
+	//测试内容
+	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local);
+	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::Local);
+	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local);
+	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::Local);
+	FVector IntersectionPoint;
+	FVector L0P0O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+		* 0.5f;
+	FVector L0P0O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+		* -0.5f;
+	FVector L0P1O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+		* 0.5f;
+	FVector L0P1O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+		* -0.5f;
+	FVector L1P0O0 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+		* 0.5f;
+	FVector L1P0O1 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+		* -0.5f;
+	FVector L1P1O0 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+		* 0.5f;
+	FVector L1P1O1 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+		* -0.5f;
+	TArray<FVector>	IntersectionPoints{L0P0O0,L0P0O1,L0P1O0,L0P1O1,L1P0O0,L1P0O1,L1P1O0,L1P1O1};
+	IncreasingSortPointByClockwise(IntersectionPoints);
+	CalculateTangentPoint(IntersectionPoint,L0P0);
+}
+
+FVector URoadGeneratorSubsystem::CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint)
+{
+	FVector Dir =UKismetMathLibrary::GetDirectionUnitVector(EdgePoint,Intersection);
+	FVector Tangent=FVector::Dist(EdgePoint,Intersection)*2*Dir;
+	return Tangent;
 }
 
 TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControlPoint(
