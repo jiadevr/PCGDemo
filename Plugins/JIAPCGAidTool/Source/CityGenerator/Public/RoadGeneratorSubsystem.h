@@ -97,6 +97,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines,float RoadWidth=400.0f);
 
+	bool Get2DIntersection(TArray<USplineComponent*> TargetSplines,TArray<FVector2D>& IntersectionsIn2DSpace);
+	
 	FVector CalculateTangentPoint(const FVector& Intersection,const FVector& EdgePoint);
 
 protected:

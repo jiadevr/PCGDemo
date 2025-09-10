@@ -239,27 +239,39 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 
 void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth)
 {
+	if (TargetSplines.Num() < 2)
+	{
+		return;
+	}
 	//测试内容
-	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local);
-	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::Local);
-	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::Local);
-	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::Local);
-	FVector IntersectionPoint;
-	FVector L0P0O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+	//交点计算
+	TArray<FVector2D> Intersections2D;
+	if (!Get2DIntersection(TargetSplines, Intersections2D))
+	{
+		return;
+	}
+	FVector IntersectionPoint = FVector(Intersections2D[0], 0.0);
+	FlushPersistentDebugLines(GEditor->GetWorld());
+	DrawDebugSphere(TargetSplines[0]->GetWorld(), IntersectionPoint, 10.0f, 12, FColor::Purple, false, 20.0f);
+	FVector L0P0O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
 		* 0.5f;
-	FVector L0P0O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L0P0O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
 		* -0.5f;
-	FVector L0P1O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L0P1O0 = L0P1 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
 		* 0.5f;
-	FVector L0P1O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L0P1O1 = L0P1 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
 		* -0.5f;
-	FVector L1P0O0 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L1P0O0 = L1P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
 		* 0.5f;
-	FVector L1P0O1 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L1P0O1 = L1P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
 		* -0.5f;
-	FVector L1P1O0 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L1P1O0 = L1P1 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
 		* 0.5f;
-	FVector L1P1O1 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
+	FVector L1P1O1 = L1P1 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
 		* -0.5f;
 	TArray<FVector> PointsAroundIntersection{L0P0O0, L0P0O1, L0P1O0, L0P1O1, L1P0O0, L1P0O1, L1P1O0, L1P1O1};
 	//对点进行顺时针排序
@@ -287,7 +299,43 @@ void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*>
 			return RelA.SizeSquared() < RelB.SizeSquared();
 		}
 	});
-	CalculateTangentPoint(IntersectionPoint, L0P0);
+	const int32 PointCount = PointsAroundIntersection.Num();
+	for (int32 i = 0; i < PointsAroundIntersection.Num(); ++i)
+	{
+		FColor DebugColor = FColor(255 * i / PointCount, 0, 0, 255);
+		DrawDebugSphere(TargetSplines[0]->GetWorld(), PointsAroundIntersection[i], 20.0f, 12, DebugColor, false,
+						20.0f);
+	}
+}
+
+bool URoadGeneratorSubsystem::Get2DIntersection(TArray<USplineComponent*> TargetSplines,
+                                                TArray<FVector2D>& IntersectionsIn2DSpace)
+{
+	TArray<FVector2D> Results;
+	//直线段求交简化情况验证
+	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+	//消元法
+	double Denominator = (L0P1.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L0P1.Y - L0P0.Y) * (L1P1.X - L1P0.X);
+	if (Denominator != 0)
+	{
+		double IntersectionT = ((L1P0.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L1P0.Y - L0P0.Y) * (L1P1.X - L1P0.X)) /
+			Denominator;
+		double IntersectionS = ((L1P0.X - L0P0.X) * (L0P1.Y - L0P0.Y) - (L1P1.Y - L0P0.Y) * (L0P1.X - L0P0.X)) /
+			Denominator;
+		if (0.0 <= IntersectionT && IntersectionT <= 1.0 && 0.0 <= IntersectionS && IntersectionS <= 1.0)
+		{
+			FVector2D Intersection{
+				L0P0.X + IntersectionT * (L0P1.X - L0P0.X), L0P0.Y + IntersectionT * (L0P1.Y - L0P0.Y)
+			};
+			Results.Emplace(Intersection);
+			IntersectionsIn2DSpace = MoveTemp(Results);
+			return true;
+		}
+	}
+	return false;
 }
 
 FVector URoadGeneratorSubsystem::CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint)
