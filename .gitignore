@@ -87,3 +87,4 @@ Content/Prop/*
 Content/Textures/*
 *.7z
 /Content/Developers
+/Content/__ExternalActors__/Developers

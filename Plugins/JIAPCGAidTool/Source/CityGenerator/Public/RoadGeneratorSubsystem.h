@@ -97,8 +97,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines,float RoadWidth=400.0f);
 
-	void IncreasingSortPointByClockwise(TArray<FVector>& Points);
-
 	FVector CalculateTangentPoint(const FVector& Intersection,const FVector& EdgePoint);
 
 protected:

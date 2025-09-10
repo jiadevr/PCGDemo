@@ -261,15 +261,39 @@ void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*>
 		* 0.5f;
 	FVector L1P1O1 = L0P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::Local) * RoadWidth
 		* -0.5f;
-	TArray<FVector>	IntersectionPoints{L0P0O0,L0P0O1,L0P1O0,L0P1O1,L1P0O0,L1P0O1,L1P1O0,L1P1O1};
-	IncreasingSortPointByClockwise(IntersectionPoints);
-	CalculateTangentPoint(IntersectionPoint,L0P0);
+	TArray<FVector> PointsAroundIntersection{L0P0O0, L0P0O1, L0P1O0, L0P1O1, L1P0O0, L1P0O1, L1P1O0, L1P1O1};
+	//对点进行顺时针排序
+	PointsAroundIntersection.Sort([&IntersectionPoint](const FVector& A, const FVector& B)
+	{
+		FVector ProjectedA = FVector::VectorPlaneProject((A - IntersectionPoint), FVector::UnitZ());
+		FVector2D RelA{ProjectedA.X, ProjectedA.Y};
+		FVector ProjectedB = FVector::VectorPlaneProject((B - IntersectionPoint), FVector::UnitZ());
+		FVector2D RelB{ProjectedB.X, ProjectedB.Y};
+
+		float AngleA = FMath::Atan2(RelA.Y, RelA.X);
+		float AngleB = FMath::Atan2(RelB.Y, RelB.X);
+
+		// 转换为[0, 2π)范围
+		if (AngleA < 0) AngleA += 2 * PI;
+		if (AngleB < 0) AngleB += 2 * PI;
+
+		if (AngleA != AngleB)
+		{
+			return AngleA < AngleB; // 极角小的排在前面
+		}
+		else
+		{
+			// 角度相同，按距离排序（近的在前）
+			return RelA.SizeSquared() < RelB.SizeSquared();
+		}
+	});
+	CalculateTangentPoint(IntersectionPoint, L0P0);
 }
 
 FVector URoadGeneratorSubsystem::CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint)
 {
-	FVector Dir =UKismetMathLibrary::GetDirectionUnitVector(EdgePoint,Intersection);
-	FVector Tangent=FVector::Dist(EdgePoint,Intersection)*2*Dir;
+	FVector Dir = UKismetMathLibrary::GetDirectionUnitVector(EdgePoint, Intersection);
+	FVector Tangent = FVector::Dist(EdgePoint, Intersection) * 2 * Dir;
 	return Tangent;
 }
 
