@@ -55,6 +55,7 @@ protected:
 	}
 };
 
+
 UCLASS()
 class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 {

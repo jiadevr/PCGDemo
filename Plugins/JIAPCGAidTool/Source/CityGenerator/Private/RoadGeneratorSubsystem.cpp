@@ -254,10 +254,14 @@ void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*>
 	{
 		return;
 	}
-	FVector IntersectionPoint = FVector(Intersections2D[0], 0.0);
 	FlushPersistentDebugLines(GEditor->GetWorld());
-	DrawDebugSphere(TargetSplines[0]->GetWorld(), IntersectionPoint, 10.0f, 12, FColor::Purple, false, 20.0f);
-	FVector L0P0O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
+	for (auto Intersection : Intersections2D)
+	{
+		FVector IntersectionPoint = FVector(Intersection, 0.0);
+		DrawDebugSphere(TargetSplines[0]->GetWorld(), IntersectionPoint, 15.0f, 12, FColor::Purple, false, 20.0f);
+	}
+	
+	/*FVector L0P0O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
 		* 0.5f;
 	FVector L0P0O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
 		* -0.5f;
@@ -304,38 +308,143 @@ void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*>
 	{
 		FColor DebugColor = FColor(255 * i / PointCount, 0, 0, 255);
 		DrawDebugSphere(TargetSplines[0]->GetWorld(), PointsAroundIntersection[i], 20.0f, 12, DebugColor, false,
-						20.0f);
-	}
+		                20.0f);
+	}*/
 }
 
 bool URoadGeneratorSubsystem::Get2DIntersection(TArray<USplineComponent*> TargetSplines,
                                                 TArray<FVector2D>& IntersectionsIn2DSpace)
 {
 	TArray<FVector2D> Results;
-	//直线段求交简化情况验证
-	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
-	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
-	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
-	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
-	//消元法
-	double Denominator = (L0P1.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L0P1.Y - L0P0.Y) * (L1P1.X - L1P0.X);
-	if (Denominator != 0)
+	if (TargetSplines.Num() != 2)
 	{
-		double IntersectionT = ((L1P0.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L1P0.Y - L0P0.Y) * (L1P1.X - L1P0.X)) /
-			Denominator;
-		double IntersectionS = ((L1P0.X - L0P0.X) * (L0P1.Y - L0P0.Y) - (L1P1.Y - L0P0.Y) * (L0P1.X - L0P0.X)) /
-			Denominator;
-		if (0.0 <= IntersectionT && IntersectionT <= 1.0 && 0.0 <= IntersectionS && IntersectionS <= 1.0)
+		return false;
+	}
+	struct FSplineBezierSegment
+	{
+	public:
+		FVector P0, P1, P2, P3;
+
+		FVector GetLocation(float InputKeyFromPreControlPoint) const
 		{
-			FVector2D Intersection{
-				L0P0.X + IntersectionT * (L0P1.X - L0P0.X), L0P0.Y + IntersectionT * (L0P1.Y - L0P0.Y)
+			return FMath::CubicInterp(P0, (P1 - P0) * 3.0f, P3, (P3 - P2) * 3.0f, InputKeyFromPreControlPoint);
+		}
+
+		FVector GetDerivative(float InputKeyFromPreControlPoint) const
+		{
+			float InputKeyFromNextControlPoint = 1.0f - InputKeyFromPreControlPoint;
+			return 3.0f * InputKeyFromNextControlPoint * InputKeyFromNextControlPoint * (P1 - P0) +
+				6.0f * InputKeyFromNextControlPoint * InputKeyFromPreControlPoint * (P2 - P1) +
+				3.0f * InputKeyFromPreControlPoint * InputKeyFromPreControlPoint * (P3 - P2);
+		}
+	};
+
+	auto Newton2DSolver = [](const FSplineBezierSegment& A, const FSplineBezierSegment& B, FVector2D Seed,
+	                         FVector2D& Intersection, float Tolerance, int32 MaxIteration)-> bool
+	{
+		FVector2D ApproximateResult = Seed;
+		for (int32 i = 0; i < MaxIteration; ++i)
+		{
+			FVector LocationInA = A.GetLocation(ApproximateResult.X);
+			FVector LocationInB = B.GetLocation(ApproximateResult.Y);
+			FVector2D VectorAToB{(LocationInA - LocationInB).X, (LocationInA - LocationInB).Y};
+			if (VectorAToB.SizeSquared() < Tolerance * Tolerance)
+			{
+				Intersection = ApproximateResult;
+				return true;
+			}
+			FVector DerivativeInA = A.GetDerivative(ApproximateResult.X);
+			FVector DerivativeInB = B.GetDerivative(ApproximateResult.Y);
+			//UE不支持直接逆矩阵与向量相乘，所以构造一个矩阵意义不大
+			FMatrix2x2d Jacobian{DerivativeInA.X, -DerivativeInB.X, DerivativeInA.Y, -DerivativeInB.Y};
+			float Determinant = Jacobian.Determinant();
+			//雅可比矩阵行列式绝对值表示两条曲线速度向量形成的平行四变相面颊越大越好，值小会造成牛顿步爆炸；或者理解成矩阵可逆
+			if (FMath::Abs(Determinant) < 1e-6f)
+			{
+				return false;
+			}
+			float InvDet = 1.0f / Determinant;
+			FVector2D Delta{
+				(-DerivativeInB.Y * VectorAToB.X - (-DerivativeInB.X) * VectorAToB.Y) * InvDet,
+				(-DerivativeInA.Y * VectorAToB.X + DerivativeInA.X * VectorAToB.Y) * InvDet
 			};
-			Results.Emplace(Intersection);
-			IntersectionsIn2DSpace = MoveTemp(Results);
-			return true;
+			ApproximateResult -= Delta;
+			//Clamp在[0,1]
+			ApproximateResult.X = FMath::Clamp(ApproximateResult.X, 0.0f, 1.0f);
+			ApproximateResult.Y = FMath::Clamp(ApproximateResult.Y, 0.0f, 1.0f);
+		}
+		return false;
+	};
+
+	auto GetSegment = [](const USplineComponent* S, int32 Index)-> FSplineBezierSegment
+	{
+		FSplineBezierSegment Sg;
+		Sg.P0 = S->GetLocationAtSplineInputKey(Index, ESplineCoordinateSpace::World);
+		Sg.P3 = S->GetLocationAtSplineInputKey(Index + 1, ESplineCoordinateSpace::World);
+		// 切线控制点
+		Sg.P1 = Sg.P0 + S->GetTangentAtSplineInputKey(Index, ESplineCoordinateSpace::World) / 3.f;
+		Sg.P2 = Sg.P3 - S->GetTangentAtSplineInputKey(Index + 1, ESplineCoordinateSpace::World) / 3.f;
+		return Sg;
+	};
+
+	//Newton-Raphson求三次贝塞尔线段交点
+	const int32 NumOfSegmentA = TargetSplines[0]->GetNumberOfSplineSegments();
+	const int32 NumOfSegmentB = TargetSplines[1]->GetNumberOfSplineSegments();
+	for (int32 SegIndexA = 0; SegIndexA < NumOfSegmentA; ++SegIndexA)
+	{
+		FSplineBezierSegment CurrentSegmentA = GetSegment(TargetSplines[0], SegIndexA);
+		for (int32 SegIndexB = 0; SegIndexB < NumOfSegmentB; ++SegIndexB)
+		{
+			FSplineBezierSegment CurrentSegmentB = GetSegment(TargetSplines[1], SegIndexB);
+			for (float SeedT = 0.05f; SeedT < 1.f; SeedT += 0.013f)
+			{
+				for (float SeedS = 0.05f; SeedS < 1.f; SeedS +=  0.017f)
+				{
+					FVector2D TS;
+					if (Newton2DSolver(CurrentSegmentA, CurrentSegmentB, FVector2D(SeedT, SeedS),TS, 0.01f,100))
+					{
+						FVector2D P {CurrentSegmentA.GetLocation(TS.X).X,CurrentSegmentA.GetLocation(TS.X).Y};
+						// 去重
+						bool bNew = true;
+						for (const auto& Ex : IntersectionsIn2DSpace)
+							if (FVector2D::DistSquared(Ex, P) < 25.f)
+							{
+								bNew = false;
+								break;
+							}
+						if (bNew)
+							IntersectionsIn2DSpace.Emplace(P);
+					}
+				}
+			}
 		}
 	}
-	return false;
+
+
+/*//直线段求交简化情况验证
+FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+//消元法
+double Denominator = (L0P1.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L0P1.Y - L0P0.Y) * (L1P1.X - L1P0.X);
+if (Denominator != 0)
+{
+	double IntersectionT = ((L1P0.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L1P0.Y - L0P0.Y) * (L1P1.X - L1P0.X)) /
+		Denominator;
+	double IntersectionS = ((L1P0.X - L0P0.X) * (L0P1.Y - L0P0.Y) - (L1P1.Y - L0P0.Y) * (L0P1.X - L0P0.X)) /
+		Denominator;
+	if (0.0 <= IntersectionT && IntersectionT <= 1.0 && 0.0 <= IntersectionS && IntersectionS <= 1.0)
+	{
+		FVector2D Intersection{
+			L0P0.X + IntersectionT * (L0P1.X - L0P0.X), L0P0.Y + IntersectionT * (L0P1.Y - L0P0.Y)
+		};
+		Results.Emplace(Intersection);
+		IntersectionsIn2DSpace = MoveTemp(Results);
+		return true;
+	}
+}*/
+return !IntersectionsIn2DSpace.IsEmpty();
 }
 
 FVector URoadGeneratorSubsystem::CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint)
