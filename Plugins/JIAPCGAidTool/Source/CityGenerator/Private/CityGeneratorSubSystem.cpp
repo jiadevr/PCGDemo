@@ -438,6 +438,25 @@ TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 	return SplineComp;
 }
 
+TSet<TWeakObjectPtr<USplineComponent>> UCityGeneratorSubSystem::GetSplines()
+{
+	if (CityGeneratorSplineArray.IsEmpty())
+	{
+		CollectAllSplines();
+	}
+	else
+	{
+		for (auto& SplineComp : CityGeneratorSplineArray)
+		{
+			if (!SplineComp.IsValid())
+			{
+				CityGeneratorSplineArray.Remove(SplineComp);
+			}
+		}
+	}
+	return CityGeneratorSplineArray;
+}
+
 TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 {
 	UUnrealEditorSubsystem* EditorSubsystem = GEditor->GetEditorSubsystem<UUnrealEditorSubsystem>();

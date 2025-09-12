@@ -8,9 +8,80 @@
 #include "RoadGeneratorSubsystem.generated.h"
 
 class USplineComponent;
-/**
- * 
- */
+
+
+USTRUCT()
+struct FSplinePolyLineSegment
+{
+	GENERATED_BODY()
+	FSplinePolyLineSegment()
+	{
+		//SegmentGlobalIndex++;
+	}
+
+public:
+	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, int32 InSegmentIndex, int32 InLastSegmentIndex,
+	                       const FTransform& InStartTransform,
+	                       const FTransform& InEndTransform): OwnerSpline(InSplineRef),
+	                                                          SegmentIndex(InSegmentIndex),
+	                                                          LastSegmentIndex(InLastSegmentIndex),
+	                                                          StartTransform(InStartTransform),
+	                                                          EndTransform(InEndTransform)
+	{
+		GlobalIndex = SegmentGlobalIndex++;
+	};
+
+	~FSplinePolyLineSegment()
+	{
+		OwnerSpline = nullptr;
+	}
+
+	UPROPERTY()
+	TWeakObjectPtr<USplineComponent> OwnerSpline = nullptr;
+
+	int32 SegmentIndex = 0;
+	//这个值是为了排除ClosedLoop最后一点和第一点连接的情况，这边是为了多线程可以不访问Spline对象额外记录的
+	int32 LastSegmentIndex = 0;
+
+	FTransform StartTransform = FTransform::Identity;
+
+	FTransform EndTransform = FTransform::Identity;
+
+	uint32 GetGlobalIndex() const { return GlobalIndex; }
+
+protected:
+	static uint32 SegmentGlobalIndex;
+	uint32 GlobalIndex = 0;
+};
+
+USTRUCT()
+struct FIntersectionResult
+{
+	GENERATED_BODY()
+	FIntersectionResult()
+	{
+	}
+
+	FIntersectionResult(const TArray<TWeakObjectPtr<USplineComponent>>& InIntersectedSplines,
+	                    const TArray<int32>& InIntersectedSegmentIndex,
+	                    const FVector&& InIntersectionPoint): IntersectedSplines(
+		                                                          InIntersectedSplines),
+	                                                          IntersectedSegmentIndex(InIntersectedSegmentIndex),
+	                                                          IntersectionPoint(InIntersectionPoint)
+	{
+	}
+
+	~FIntersectionResult()
+	{
+		IntersectedSplines.Empty();
+	}
+
+	UPROPERTY()
+	TArray<TWeakObjectPtr<USplineComponent>> IntersectedSplines;
+	TArray<int32> IntersectedSegmentIndex;
+	FVector IntersectionPoint = FVector::Zero();
+};
+
 //道路名称枚举
 UENUM()
 enum class ELaneType:uint8
@@ -51,7 +122,7 @@ protected:
 		{
 			Rectangle2DCoords[i] = FVector2D(Width, Height) * UnitShape[i];
 		}
-		return MoveTemp(Rectangle2DCoords);
+		return Rectangle2DCoords;
 	}
 };
 
@@ -61,6 +132,27 @@ class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 {
 	GENERATED_BODY()
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+
+	void OnLevelActorChanged( AActor* ChangedActor);
+	bool bNeedRefreshSplineData=true;
+#pragma region GenerateIntersection
+
+	UFUNCTION(BlueprintCallable)
+	bool InitialRoadSplines();
+	void UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance = 500);
+
+	TMap<TWeakObjectPtr<USplineComponent>, TArray<FSplinePolyLineSegment>> SplineSegmentsInfo;
+
+	const float MinimumQuadSize = 100.f;
+	UFUNCTION(BlueprintCallable)
+	TArray<FVector> FindAllIntersections();
+
+	const float MergeThreshold = 50.0f;
+	bool Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
+	                       const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
+	                       FVector2D& OutIntersection);
+#pragma endregion GenerateIntersection
+
 #pragma region GenerateRoad
 
 public:
@@ -93,14 +185,14 @@ public:
 	                         float EndShrink = 0.0);
 
 	TArray<FVector> IntersectionLocation;
-	TMap<TWeakObjectPtr<USplineComponent>,TWeakObjectPtr<AActor>>SplineToMesh;
-	
-	UFUNCTION(BlueprintCallable)
-	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines,float RoadWidth=400.0f);
+	TMap<TWeakObjectPtr<USplineComponent>, TWeakObjectPtr<AActor>> SplineToMesh;
 
-	bool Get2DIntersection(TArray<USplineComponent*> TargetSplines,TArray<FVector2D>& IntersectionsIn2DSpace);
-	
-	FVector CalculateTangentPoint(const FVector& Intersection,const FVector& EdgePoint);
+	UFUNCTION(BlueprintCallable)
+	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth = 400.0f);
+
+	bool Get2DIntersection(TArray<USplineComponent*> TargetSplines, TArray<FVector2D>& IntersectionsIn2DSpace);
+
+	FVector CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint);
 
 protected:
 	/**

@@ -67,6 +67,8 @@ public:
 	                                                       const TArray<FRotator>& PointRotator,
 	                                                       const bool bIsCloseLoop);
 
+	
+	TSet<TWeakObjectPtr<USplineComponent>> GetSplines();
 protected:
 	TObjectPtr<UWorld> GetEditorContext() const;
 
@@ -84,8 +86,9 @@ protected:
 #pragma endregion GenerateRoad
 
 protected:
+	//@TODO:确定TArray还是TSet，对应改名
 	UPROPERTY()
-	TArray<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineArray;
+	TSet<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineArray;
 
 	
 };
