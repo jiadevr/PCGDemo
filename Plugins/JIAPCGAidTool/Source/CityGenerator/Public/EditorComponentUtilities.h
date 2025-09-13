@@ -21,7 +21,7 @@ public:
  * @param ActorTrans Transform
  * @return 返回生成的对象
  */
-	static TObjectPtr<AActor> SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans);
+	[[nodiscard]] static TObjectPtr<AActor> SpawnEmptyActor(const FString& ActorName, const FTransform& ActorTrans);
 
 	/**
  * 辅助函数，在编辑器中为Actor添加指定类型的Component
@@ -30,7 +30,7 @@ public:
  * @return 返回ActorComponent，根据需要Cast
  */
 	static TObjectPtr<UActorComponent> AddComponentInEditor(AActor* TargetActor,
-	                                                 TSubclassOf<UActorComponent> TargetComponentClass);
+	                                                        TSubclassOf<UActorComponent> TargetComponentClass);
 
 protected:
 	static TObjectPtr<UWorld> GetEditorContext();

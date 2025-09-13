@@ -5,84 +5,11 @@
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
 #include "GenericQuadTree.h"
+#include "Road/RoadSegmentStruct.h"
 
 #include "RoadGeneratorSubsystem.generated.h"
-
+class UIntersectionMeshGenerator;
 class USplineComponent;
-
-
-USTRUCT()
-struct FSplinePolyLineSegment
-{
-	GENERATED_BODY()
-	FSplinePolyLineSegment()
-	{
-		//SegmentGlobalIndex++;
-	}
-
-public:
-	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, int32 InSegmentIndex, int32 InLastSegmentIndex,
-	                       const FTransform& InStartTransform,
-	                       const FTransform& InEndTransform): OwnerSpline(InSplineRef),
-	                                                          SegmentIndex(InSegmentIndex),
-	                                                          LastSegmentIndex(InLastSegmentIndex),
-	                                                          StartTransform(InStartTransform),
-	                                                          EndTransform(InEndTransform)
-	{
-		GlobalIndex = SegmentGlobalIndex++;
-	};
-
-	~FSplinePolyLineSegment()
-	{
-		OwnerSpline = nullptr;
-	}
-
-	UPROPERTY()
-	TWeakObjectPtr<USplineComponent> OwnerSpline = nullptr;
-
-	int32 SegmentIndex = 0;
-	//这个值是为了排除ClosedLoop最后一点和第一点连接的情况，这边是为了多线程可以不访问Spline对象额外记录的
-	int32 LastSegmentIndex = 0;
-
-	FTransform StartTransform = FTransform::Identity;
-
-	FTransform EndTransform = FTransform::Identity;
-
-	uint32 GetGlobalIndex() const { return GlobalIndex; }
-
-protected:
-	static uint32 SegmentGlobalIndex;
-	uint32 GlobalIndex = 0;
-};
-
-USTRUCT()
-struct FIntersectionResult
-{
-	GENERATED_BODY()
-	FIntersectionResult()
-	{
-	}
-
-	FIntersectionResult(const TArray<TWeakObjectPtr<USplineComponent>>& InIntersectedSplines,
-	                    const TArray<int32>& InIntersectedSegmentIndex,
-	                    const FVector& InIntersectionPoint): IntersectedSplines(
-		                                                          InIntersectedSplines),
-	                                                          IntersectedSegmentIndex(InIntersectedSegmentIndex),
-	                                                          IntersectionPoint(InIntersectionPoint)
-	{
-	}
-
-	~FIntersectionResult()
-	{
-		IntersectedSplines.Empty();
-	}
-
-	UPROPERTY()
-	TArray<TWeakObjectPtr<USplineComponent>> IntersectedSplines;
-	TArray<int32> IntersectedSegmentIndex;
-	FVector IntersectionPoint = FVector::Zero();
-};
-
 //道路名称枚举
 UENUM()
 enum class ELaneType:uint8
@@ -135,10 +62,18 @@ class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-
+	bool bNeedRefreshSegmentData = true;
+	/**
+	 * 绑定OnComponentTransformChanged()，当SplineSegmentsInfo内的Spline移动时，设置bNeedRefreshSegmentData=true,需要重新刷新分段信息
+	 * @param MovedComp GEditor回调返回的Component信息
+	 * @param MoveType 未使用
+	 */
+	void OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType);
 #pragma region GenerateIntersection
 
 public:
+	UFUNCTION(BlueprintCallable)
+	void GenerateIntersections();
 	/**
 	 * 初始化样条信息，从CityGeneratorSubsystem中获取有效的Spline信息，调用UpdateSplineSegments把样条转换为芬顿数据
 	 * @return 成功获取至少一条样条返回true
@@ -158,7 +93,7 @@ public:
 	 * @return 返回交点信息
 	 */
 	//UFUNCTION(BlueprintCallable)
-	[[nodiscard]] TArray<FIntersectionResult> FindAllIntersections();
+	[[nodiscard]] TArray<FSplineIntersection> FindAllIntersections();
 
 	/**
 	* 四叉树网格计算最小网格边长
@@ -172,13 +107,6 @@ public:
 	const float MergeThreshold = 200.0f;
 
 protected:
-	bool bNeedRefreshSegmentData = true;
-	/**
-	 * 绑定OnComponentTransformChanged()，当SplineSegmentsInfo内的Spline移动时，设置bNeedRefreshSegmentData=true,需要重新刷新分段信息
-	 * @param MovedComp GEditor回调返回的Component信息
-	 * @param MoveType 未使用
-	 */
-	void OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType);
 	/**
 	 * 记录样条、样条分段数据
 	 */
@@ -214,7 +142,7 @@ protected:
 	bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
 	                       TArray<FVector2D>& IntersectionsIn2DSpace);
 
-	TArray<FIntersectionResult> RoadIntersections;
+	TArray<TWeakObjectPtr<UIntersectionMeshGenerator>> RoadIntersectionsComps;
 
 #pragma endregion GenerateIntersection
 

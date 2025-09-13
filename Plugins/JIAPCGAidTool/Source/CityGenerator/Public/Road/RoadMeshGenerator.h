@@ -3,20 +3,21 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MeshGeneratorInterface.h"
 #include "Components/ActorComponent.h"
-#include "RoadDataComp.generated.h"
+#include "RoadMeshGenerator.generated.h"
 
 
 class USplineComponent;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class CITYGENERATOR_API URoadDataComp : public UActorComponent
+class CITYGENERATOR_API URoadMeshGenerator : public UActorComponent,public IMeshGeneratorInterface
 {
 	GENERATED_BODY()
 
 public:
 	// Sets default values for this component's properties
-	URoadDataComp();
+	URoadMeshGenerator();
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere)
 	int32 DebugIndex;
@@ -29,12 +30,6 @@ public:
 	UPROPERTY(BlueprintReadOnly,VisibleInstanceOnly)
 	TWeakObjectPtr<USplineComponent> ReferenceSpline;
 
-protected:
-	// Called when the game starts
-	virtual void BeginPlay() override;
-
-public:
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
-	                           FActorComponentTickFunction* ThisTickFunction) override;
+	virtual bool GenerateMesh() override;
+	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
 };

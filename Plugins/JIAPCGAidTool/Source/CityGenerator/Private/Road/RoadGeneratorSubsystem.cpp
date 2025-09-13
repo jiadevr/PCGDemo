@@ -1,20 +1,20 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "RoadGeneratorSubsystem.h"
+#include "Road/RoadGeneratorSubsystem.h"
 
 #include "CityGeneratorSubSystem.h"
 #include "EditorComponentUtilities.h"
-//#include "GenericQuadTree.h"
 #include "NotifyUtilities.h"
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SplineComponent.h"
 #include "GeometryScript/MeshNormalsFunctions.h"
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "Road/RoadDataComp.h"
+#include "Road/IntersectionMeshGenerator.h"
+#include "Road/RoadMeshGenerator.h"
+#include "Road/RoadSegmentStruct.h"
 
-uint32 FSplinePolyLineSegment::SegmentGlobalIndex = 0;
 
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -24,6 +24,7 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	RoadPresetMap.Emplace(ELaneType::TwoLaneTwoWay, FLaneMeshInfo(700.0f, 20.0f));
 	GEditor->OnComponentTransformChanged().AddUObject(this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
 }
+
 
 void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType)
 {
@@ -43,6 +44,52 @@ void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, 
 	}
 }
 #pragma region GenerateIntersection
+void URoadGeneratorSubsystem::GenerateIntersections()
+{
+	if (bNeedRefreshSegmentData)
+	{
+		InitialRoadSplines();
+	}
+	if (SplineSegmentsInfo.IsEmpty())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Error:Find Null Spline");
+		return;
+	}
+	TArray<FSplineIntersection> IntersectionResults = FindAllIntersections();
+	if (IntersectionResults.IsEmpty())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Error:Find Null Intersections");
+		return;
+	}
+	RoadIntersectionsComps.Reserve(IntersectionResults.Num());
+	RoadIntersectionsComps.Reset();
+	//生成Actor挂载
+	for (int32 i = 0; i < IntersectionResults.Num(); ++i)
+	{
+		FTransform ActorTransform = FTransform::Identity;
+		ActorTransform.SetLocation(IntersectionResults[i].WorldLocation);
+		AActor* IntersectionActor = UEditorComponentUtilities::SpawnEmptyActor(
+			FString::Printf(TEXT("RoadIntersection%d"), i), ActorTransform);
+		ensureAlwaysMsgf(IntersectionActor!=nullptr, TEXT("Error:Create Intersection Actor Failed"));
+
+		UActorComponent* MeshCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+			IntersectionActor, UDynamicMeshComponent::StaticClass());
+		UDynamicMeshComponent* MeshComp = Cast<UDynamicMeshComponent>(MeshCompTemp);
+		ensureAlwaysMsgf(MeshComp!=nullptr, TEXT("Error:Create DynamicMeshComp Failed"));
+		UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+			IntersectionActor, UIntersectionMeshGenerator::StaticClass());
+		UIntersectionMeshGenerator* GeneratorComp = Cast<UIntersectionMeshGenerator>(GeneratorCompTemp);
+		ensureAlwaysMsgf(GeneratorComp!=nullptr, TEXT("Error:Create IntersectionMeshGeneratorComp Failed"));
+		GeneratorComp->SetMeshComponent(MeshComp);
+		GeneratorComp->IntersectionData = IntersectionResults[i];
+		RoadIntersectionsComps.Emplace(GeneratorComp);
+	}
+	for (const auto& IntersectionGenerator : RoadIntersectionsComps)
+	{
+		IntersectionGenerator->GenerateMesh();
+	}
+}
+
 bool URoadGeneratorSubsystem::InitialRoadSplines()
 {
 	UCityGeneratorSubSystem* DataSubsystem = GEditor->GetEditorSubsystem<UCityGeneratorSubSystem>();
@@ -97,10 +144,10 @@ void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSplin
 	SplineSegmentsInfo.Emplace(TargetSpline, Segments);
 }
 
-TArray<FIntersectionResult> URoadGeneratorSubsystem::FindAllIntersections()
+TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 {
 	TRACE_BOOKMARK(TEXT("Begin Find Intersections"));
-	TArray<FIntersectionResult> Results;
+	TArray<FSplineIntersection> Results;
 	if (SplineSegmentsInfo.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Find Intersection Failed, Reason:Find Null Spline");
@@ -199,11 +246,11 @@ TArray<FIntersectionResult> URoadGeneratorSubsystem::FindAllIntersections()
 			FVector FlattedIntersectionLoc = FVector(IntersectionLoc2D, 0.0);
 			//检查相近点
 			bool bCanMerge = false;
-			for (FIntersectionResult& Result : Results)
+			for (FSplineIntersection& Result : Results)
 			{
 				//相当于用空间关系进行交点索引
 				//@TODO:这里可能需要一个优先级算法确定以谁为终点
-				if (FVector::DistSquared2D(Result.IntersectionPoint, FlattedIntersectionLoc) < MergeThreshold *
+				if (FVector::DistSquared2D(Result.WorldLocation, FlattedIntersectionLoc) < MergeThreshold *
 					MergeThreshold)
 				{
 					//AddSplineToOldIntersectionData
@@ -220,7 +267,7 @@ TArray<FIntersectionResult> URoadGeneratorSubsystem::FindAllIntersections()
 					AllSegments[i].OwnerSpline, OverlappedSegment.OwnerSpline
 				};
 				TArray<int32> IntersectedSegmentIndex{AllSegments[i].SegmentIndex, OverlappedSegment.SegmentIndex};
-				FIntersectionResult
+				FSplineIntersection
 					NewIntersection(IntersectedSplines, IntersectedSegmentIndex, FlattedIntersectionLoc);
 				//AddSplineToNewIntersectionData
 				Results.Emplace(NewIntersection);
@@ -284,8 +331,8 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* Target
 	FTransform SplineOwnerTransform = TargetSpline->GetOwner()->GetTransform();
 	SplineOwnerTransform.SetScale3D(FVector(1.0, 1.0, 1.0));
 	TObjectPtr<AActor> MeshActor = UEditorComponentUtilities::SpawnEmptyActor(SplineOwnerName, SplineOwnerTransform);
-	TObjectPtr<URoadDataComp> RoadDataComp = Cast<URoadDataComp>(
-		UEditorComponentUtilities::AddComponentInEditor(MeshActor, URoadDataComp::StaticClass()));
+	TObjectPtr<URoadMeshGenerator> RoadDataComp = Cast<URoadMeshGenerator>(
+		UEditorComponentUtilities::AddComponentInEditor(MeshActor, URoadMeshGenerator::StaticClass()));
 	if (nullptr == RoadDataComp)
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Generate DataRecorder Failed");

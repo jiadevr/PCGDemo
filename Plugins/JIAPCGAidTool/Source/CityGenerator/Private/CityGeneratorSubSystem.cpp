@@ -5,16 +5,14 @@
 
 #include "EditorComponentUtilities.h"
 #include "NotifyUtilities.h"
-#include "RoadGeneratorSubsystem.h"
-#include "SubobjectDataSubsystem.h"
-#include "SubobjectDataHandle.h"
-#include  "SubobjectData.h"
+#include "Road/RoadGeneratorSubsystem.h"
+
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SplineComponent.h"
-#include "GeometryScript/MeshNormalsFunctions.h"
+
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetMathLibrary.h"
+
 #include "Subsystems/UnrealEditorSubsystem.h"
 
 #pragma region  Base
@@ -80,8 +78,8 @@ void UCityGeneratorSubSystem::CollectAllSplines(const FName OptionalActorTag/*="
 			}
 		}
 	}
-	UNotifyUtilities::ShowPopupMsgAtCorner( FString::Printf(TEXT("Get %d SplineComps"), CityGeneratorSplineSet.Num()));
-	bNeedRefreshSplineData=false;
+	UNotifyUtilities::ShowPopupMsgAtCorner(FString::Printf(TEXT("Get %d SplineComps"), CityGeneratorSplineSet.Num()));
+	bNeedRefreshSplineData = false;
 }
 
 void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FString& FilePath, bool bSaveActorTag,
