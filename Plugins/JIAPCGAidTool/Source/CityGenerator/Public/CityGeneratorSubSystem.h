@@ -16,9 +16,19 @@ UCLASS()
 class CITYGENERATOR_API UCityGeneratorSubSystem : public UEditorSubsystem
 {
 	GENERATED_BODY()
-
+public:
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+protected:
+	/**
+	 * 绑定GEditor的Actor增删多播委托，设置bNeedRefreshSplineData=true,用于在必要时更新Spline列表
+	 * @param LevelActor 传入的Actor对象，调用该委托在实际删除对象前可以获得有效的Actor指针
+	 */
+	void OnSplineActorChanged(AActor* LevelActor);
+	bool bNeedRefreshSplineData=true;
+	
 public:
 #pragma region  Base
+
 	/**
 	 * 获取场景中的SplineComponents，可选传入ActorTag和ComponentTag作为前置筛选，结果覆盖CityGeneratorSplineArray;
 	 * @param OptionalActorTag 可选项，在获取Actor时进行前置过滤
@@ -33,12 +43,10 @@ public:
 	 * @param FilePath 保存文件路径，为空时保存在项目Saved下
 	 * @param bSaveActorTag 是否保存ActorTag
 	 * @param bSaveCompTag 是否保存SplineCompTag
-	 * @param bForceRecollect 保存前是否刷新当前Spline信息，即首先运行UCityGeneratorSubSystem::CollectAllSplines
 	 */
 	UFUNCTION(BlueprintCallable)
 	void SerializeSplines(const FString& FileName, const FString& FilePath = "", bool bSaveActorTag = false,
-	                      bool bSaveCompTag = false,
-	                      bool bForceRecollect = false);
+	                      bool bSaveCompTag = false);
 
 	/**
 	 * 反序列化SPline信息，用于还原。还原结果为Actor带有SceneComponent（Root）和SplineComponent
@@ -67,17 +75,24 @@ public:
 	                                                       const TArray<FRotator>& PointRotator,
 	                                                       const bool bIsCloseLoop);
 
-	
+
+	/**
+	 * 接口函数，用于获取场景中的样条对象
+	 * @return 场景样条对象弱指针，返回前已经及逆行有效性检验
+	 */
 	TSet<TWeakObjectPtr<USplineComponent>> GetSplines();
+
 protected:
 	TObjectPtr<UWorld> GetEditorContext() const;
 
 
 #pragma endregion Base
 #pragma region GenerateRoad
+
 public:
 	UFUNCTION(BlueprintCallable)
-	void GenerateRoads(USplineComponent* TargetSpline=nullptr);
+	void GenerateRoads(USplineComponent* TargetSpline = nullptr);
+
 protected:
 	UPROPERTY()
 	TWeakObjectPtr<URoadGeneratorSubsystem> RoadSubsystem;
@@ -86,9 +101,6 @@ protected:
 #pragma endregion GenerateRoad
 
 protected:
-	//@TODO:确定TArray还是TSet，对应改名
 	UPROPERTY()
-	TSet<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineArray;
-
-	
+	TSet<TWeakObjectPtr<USplineComponent>> CityGeneratorSplineSet;
 };

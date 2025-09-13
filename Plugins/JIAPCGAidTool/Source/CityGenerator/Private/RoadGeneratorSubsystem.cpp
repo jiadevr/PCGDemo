@@ -5,13 +5,12 @@
 
 #include "CityGeneratorSubSystem.h"
 #include "EditorComponentUtilities.h"
-#include "GenericQuadTree.h"
+//#include "GenericQuadTree.h"
 #include "NotifyUtilities.h"
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SplineComponent.h"
 #include "GeometryScript/MeshNormalsFunctions.h"
 #include "GeometryScript/MeshPrimitiveFunctions.h"
-#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Road/RoadDataComp.h"
 
@@ -23,24 +22,26 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	//双向四车道是2*7.5米，双向六车道是2*11.25米
 	RoadPresetMap.Emplace(ELaneType::SingleWay, FLaneMeshInfo(400.0f, 20.0f));
 	RoadPresetMap.Emplace(ELaneType::TwoLaneTwoWay, FLaneMeshInfo(700.0f, 20.0f));
-	GEngine->OnLevelActorAdded().AddUObject(this, &URoadGeneratorSubsystem::OnLevelActorChanged);
-	GEngine->OnLevelActorDeleted().AddUObject(this, &URoadGeneratorSubsystem::OnLevelActorChanged);
+	GEditor->OnComponentTransformChanged().AddUObject(this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
 }
 
-void URoadGeneratorSubsystem::OnLevelActorChanged(AActor* ChangedActor)
+void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType)
 {
-	//在删除的瞬间还能拿到Actor*
-	if (nullptr == ChangedActor)
+	if (nullptr == MovedComp)
 	{
 		return;
 	}
-	UActorComponent* AttachedComp = ChangedActor->GetComponentByClass(USplineComponent::StaticClass());
-	if (nullptr != AttachedComp)
+	USplineComponent* SplineComp = Cast<USplineComponent>(MovedComp);
+	if (nullptr == SplineComp)
 	{
-		bNeedRefreshSplineData = true;
+		return;
+	}
+	TWeakObjectPtr<USplineComponent> PotentialSpline(SplineComp);
+	if (SplineSegmentsInfo.Contains(PotentialSpline))
+	{
+		bNeedRefreshSegmentData = true;
 	}
 }
-
 #pragma region GenerateIntersection
 bool URoadGeneratorSubsystem::InitialRoadSplines()
 {
@@ -49,11 +50,6 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error::Find Null UCityGeneratorSubSystem");
 		return false;
-	}
-	if (bNeedRefreshSplineData)
-	{
-		DataSubsystem->CollectAllSplines();
-		bNeedRefreshSplineData = false;
 	}
 	TSet<TWeakObjectPtr<USplineComponent>> RoadSplines = DataSubsystem->GetSplines();
 	if (RoadSplines.IsEmpty())
@@ -101,10 +97,10 @@ void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSplin
 	SplineSegmentsInfo.Emplace(TargetSpline, Segments);
 }
 
-TArray<FVector> URoadGeneratorSubsystem::FindAllIntersections()
+TArray<FIntersectionResult> URoadGeneratorSubsystem::FindAllIntersections()
 {
 	TRACE_BOOKMARK(TEXT("Begin Find Intersections"));
-	TArray<FVector> Results;
+	TArray<FIntersectionResult> Results;
 	if (SplineSegmentsInfo.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Find Intersection Failed, Reason:Find Null Spline");
@@ -133,7 +129,7 @@ TArray<FVector> URoadGeneratorSubsystem::FindAllIntersections()
 		}
 	}
 
-	TQuadTree<FSplinePolyLineSegment> SplineQuadTree(TotalBounds, MinimumQuadSize);
+	SplineQuadTree = TQuadTree<FSplinePolyLineSegment>(TotalBounds, MinimumQuadSize);
 	for (const auto& SegmentWithIndex : AllSegments)
 	{
 		FBox2D SegmentBounds(ForceInit);
@@ -195,31 +191,45 @@ TArray<FVector> URoadGeneratorSubsystem::FindAllIntersections()
 			FVector2D TestingSegmentStart = FVector2D(OverlappedSegment.StartTransform.GetLocation());
 			FVector2D TestingSegmentEnd = FVector2D(OverlappedSegment.EndTransform.GetLocation());
 			FVector2D IntersectionLoc2D;
-			if (Get2DIntersection(IteratorSegmentStart, IteratorSegmentEnd, TestingSegmentStart, TestingSegmentEnd,
-			                      IntersectionLoc2D))
+			if (!Get2DIntersection(IteratorSegmentStart, IteratorSegmentEnd, TestingSegmentStart, TestingSegmentEnd,
+			                       IntersectionLoc2D))
 			{
-				FVector FlattedIntersectionLoc = FVector(IntersectionLoc2D, 0.0);
-				//检查相近点
-				bool bCanMerge = false;
-				for (const FVector& Result : Results)
+				continue;
+			}
+			FVector FlattedIntersectionLoc = FVector(IntersectionLoc2D, 0.0);
+			//检查相近点
+			bool bCanMerge = false;
+			for (FIntersectionResult& Result : Results)
+			{
+				//相当于用空间关系进行交点索引
+				//@TODO:这里可能需要一个优先级算法确定以谁为终点
+				if (FVector::DistSquared2D(Result.IntersectionPoint, FlattedIntersectionLoc) < MergeThreshold *
+					MergeThreshold)
 				{
-					if (FVector::DistSquared2D(Result, FlattedIntersectionLoc) < MergeThreshold * MergeThreshold)
-					{
-						//AddSplineToOldIntersectionData
-						bCanMerge = true;
-						break;
-					}
+					//AddSplineToOldIntersectionData
+					Result.IntersectedSplines.Emplace(OverlappedSegment.OwnerSpline);
+					Result.IntersectedSegmentIndex.Emplace(OverlappedSegment.SegmentIndex);
+					bCanMerge = true;
+					break;
 				}
-				if (!bCanMerge)
-				{
-					Results.Emplace(FlattedIntersectionLoc);
-					//AddSplineToNewIntersectionData
-				}
+			}
+			if (!bCanMerge)
+			{
+				//首次添加需要加两个Segment信息
+				TArray<TWeakObjectPtr<USplineComponent>> IntersectedSplines{
+					AllSegments[i].OwnerSpline, OverlappedSegment.OwnerSpline
+				};
+				TArray<int32> IntersectedSegmentIndex{AllSegments[i].SegmentIndex, OverlappedSegment.SegmentIndex};
+				FIntersectionResult
+					NewIntersection(IntersectedSplines, IntersectedSegmentIndex, FlattedIntersectionLoc);
+				//AddSplineToNewIntersectionData
+				Results.Emplace(NewIntersection);
 			}
 		}
 	}
 	return Results;
 }
+
 
 bool URoadGeneratorSubsystem::Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
                                                 const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
@@ -488,7 +498,7 @@ void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*>
 	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
 	//交点计算
 	TArray<FVector2D> Intersections2D;
-	if (!Get2DIntersection(TargetSplines, Intersections2D))
+	if (!Get2DIntersection(TargetSplines[0], TargetSplines[1], Intersections2D))
 	{
 		return;
 	}
@@ -550,14 +560,11 @@ void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*>
 	}*/
 }
 
-bool URoadGeneratorSubsystem::Get2DIntersection(TArray<USplineComponent*> TargetSplines,
+bool URoadGeneratorSubsystem::Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
                                                 TArray<FVector2D>& IntersectionsIn2DSpace)
 {
 	TArray<FVector2D> Results;
-	if (TargetSplines.Num() != 2)
-	{
-		return false;
-	}
+
 	struct FSplineBezierSegment
 	{
 	public:
@@ -626,14 +633,14 @@ bool URoadGeneratorSubsystem::Get2DIntersection(TArray<USplineComponent*> Target
 	};
 
 	//Newton-Raphson求三次贝塞尔线段交点
-	const int32 NumOfSegmentA = TargetSplines[0]->GetNumberOfSplineSegments();
-	const int32 NumOfSegmentB = TargetSplines[1]->GetNumberOfSplineSegments();
+	const int32 NumOfSegmentA = TargetSplineA->GetNumberOfSplineSegments();
+	const int32 NumOfSegmentB = TargetSplineB->GetNumberOfSplineSegments();
 	for (int32 SegIndexA = 0; SegIndexA < NumOfSegmentA; ++SegIndexA)
 	{
-		FSplineBezierSegment CurrentSegmentA = GetSegment(TargetSplines[0], SegIndexA);
+		FSplineBezierSegment CurrentSegmentA = GetSegment(TargetSplineA, SegIndexA);
 		for (int32 SegIndexB = 0; SegIndexB < NumOfSegmentB; ++SegIndexB)
 		{
-			FSplineBezierSegment CurrentSegmentB = GetSegment(TargetSplines[1], SegIndexB);
+			FSplineBezierSegment CurrentSegmentB = GetSegment(TargetSplineB, SegIndexB);
 			for (float SeedT = 0.05f; SeedT < 1.f; SeedT += 0.013f)
 			{
 				for (float SeedS = 0.05f; SeedS < 1.f; SeedS += 0.017f)
@@ -657,31 +664,6 @@ bool URoadGeneratorSubsystem::Get2DIntersection(TArray<USplineComponent*> Target
 			}
 		}
 	}
-
-
-	/*//直线段求交简化情况验证
-	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
-	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
-	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
-	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
-	//消元法
-	double Denominator = (L0P1.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L0P1.Y - L0P0.Y) * (L1P1.X - L1P0.X);
-	if (Denominator != 0)
-	{
-		double IntersectionT = ((L1P0.X - L0P0.X) * (L1P1.Y - L1P0.Y) - (L1P0.Y - L0P0.Y) * (L1P1.X - L1P0.X)) /
-			Denominator;
-		double IntersectionS = ((L1P0.X - L0P0.X) * (L0P1.Y - L0P0.Y) - (L1P1.Y - L0P0.Y) * (L0P1.X - L0P0.X)) /
-			Denominator;
-		if (0.0 <= IntersectionT && IntersectionT <= 1.0 && 0.0 <= IntersectionS && IntersectionS <= 1.0)
-		{
-			FVector2D Intersection{
-				L0P0.X + IntersectionT * (L0P1.X - L0P0.X), L0P0.Y + IntersectionT * (L0P1.Y - L0P0.Y)
-			};
-			Results.Emplace(Intersection);
-			IntersectionsIn2DSpace = MoveTemp(Results);
-			return true;
-		}
-	}*/
 	return !IntersectionsIn2DSpace.IsEmpty();
 }
 

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
+#include "GenericQuadTree.h"
 
 #include "RoadGeneratorSubsystem.generated.h"
 
@@ -64,7 +65,7 @@ struct FIntersectionResult
 
 	FIntersectionResult(const TArray<TWeakObjectPtr<USplineComponent>>& InIntersectedSplines,
 	                    const TArray<int32>& InIntersectedSegmentIndex,
-	                    const FVector&& InIntersectionPoint): IntersectedSplines(
+	                    const FVector& InIntersectionPoint): IntersectedSplines(
 		                                                          InIntersectedSplines),
 	                                                          IntersectedSegmentIndex(InIntersectedSegmentIndex),
 	                                                          IntersectionPoint(InIntersectionPoint)
@@ -131,26 +132,90 @@ UCLASS()
 class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 {
 	GENERATED_BODY()
+
+public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
-	void OnLevelActorChanged( AActor* ChangedActor);
-	bool bNeedRefreshSplineData=true;
 #pragma region GenerateIntersection
 
+public:
+	/**
+	 * 初始化样条信息，从CityGeneratorSubsystem中获取有效的Spline信息，调用UpdateSplineSegments把样条转换为芬顿数据
+	 * @return 成功获取至少一条样条返回true
+	 */
 	UFUNCTION(BlueprintCallable)
 	bool InitialRoadSplines();
-	void UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance = 500);
+	/**
+	 * 更新单根样条的分段数据，**后续可能会对LinearType控制点进行进一步优化**
+	 * @param TargetSpline 需要更新数据的样条
+	 * @param SampleDistance SplineToPolyLine细分采样数据
+	 */
+	void UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance = 250);
 
+	/**
+	 * 根据SplineSegmentsInfo数据调用Get2DIntersection计算样条交点，使用四叉树和备忘录剪枝。
+	 * 后续可能会放在多线程做，因此保留返回值形式
+	 * @return 返回交点信息
+	 */
+	//UFUNCTION(BlueprintCallable)
+	[[nodiscard]] TArray<FIntersectionResult> FindAllIntersections();
+
+	/**
+	* 四叉树网格计算最小网格边长
+	*/
+	const float MinimumQuadSize = 100.f;
+
+
+	/**
+	 * 交点合并阈值，此范围内的交点会被合并为同一点
+	 */
+	const float MergeThreshold = 200.0f;
+
+protected:
+	bool bNeedRefreshSegmentData = true;
+	/**
+	 * 绑定OnComponentTransformChanged()，当SplineSegmentsInfo内的Spline移动时，设置bNeedRefreshSegmentData=true,需要重新刷新分段信息
+	 * @param MovedComp GEditor回调返回的Component信息
+	 * @param MoveType 未使用
+	 */
+	void OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType);
+	/**
+	 * 记录样条、样条分段数据
+	 */
 	TMap<TWeakObjectPtr<USplineComponent>, TArray<FSplinePolyLineSegment>> SplineSegmentsInfo;
 
-	const float MinimumQuadSize = 100.f;
-	UFUNCTION(BlueprintCallable)
-	TArray<FVector> FindAllIntersections();
+	/**
+	 * 用于加速样条交点计算的四叉树
+	 */
+	TQuadTree<FSplinePolyLineSegment> SplineQuadTree{FBox2D()};
 
-	const float MergeThreshold = 50.0f;
+
+	/**
+	 * 使用参数法计算传入的直线段SegmentA和SegmentB在Start-End范围内的交点，使用快速排斥算法剪枝
+	 * @param InSegmentAStart 待测试直线段A起点
+	 * @param InSegmentAEnd 待测试直线段A终点
+	 * @param InSegmentBStart 待测试直线段B起点
+	 * @param InSegmentBEnd 待测试直线段B终点
+	 * @param OutIntersection 交点（如存在）
+	 * @return SegmentA和SegmentB在Start-End范围内是否存在交点
+	 */
 	bool Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
 	                       const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
 	                       FVector2D& OutIntersection);
+
+
+	/**
+	 * 使用贝塞尔样条拟合、使用Newton-Raphson法计算两条样条线的交点
+	 * @param TargetSplineA 待测试样条A
+	 * @param TargetSplineB 待测试样条B
+	 * @param IntersectionsIn2DSpace 交点数组
+	 * @return 待测试样条A、B在样条全长内是否存在交点
+	 */
+	bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
+	                       TArray<FVector2D>& IntersectionsIn2DSpace);
+
+	TArray<FIntersectionResult> RoadIntersections;
+
 #pragma endregion GenerateIntersection
 
 #pragma region GenerateRoad
@@ -190,7 +255,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth = 400.0f);
 
-	bool Get2DIntersection(TArray<USplineComponent*> TargetSplines, TArray<FVector2D>& IntersectionsIn2DSpace);
 
 	FVector CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint);
 

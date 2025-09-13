@@ -18,6 +18,27 @@
 #include "Subsystems/UnrealEditorSubsystem.h"
 
 #pragma region  Base
+void UCityGeneratorSubSystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+	GEngine->OnLevelActorAdded().AddUObject(this, &UCityGeneratorSubSystem::OnSplineActorChanged);
+	GEngine->OnLevelActorDeleted().AddUObject(this, &UCityGeneratorSubSystem::OnSplineActorChanged);
+}
+
+void UCityGeneratorSubSystem::OnSplineActorChanged(AActor* LevelActor)
+{
+	//在删除的瞬间还能拿到Actor*
+	if (nullptr == LevelActor)
+	{
+		return;
+	}
+	UActorComponent* AttachedComp = LevelActor->GetComponentByClass(USplineComponent::StaticClass());
+	if (nullptr != AttachedComp)
+	{
+		bNeedRefreshSplineData = true;
+	}
+}
+
 void UCityGeneratorSubSystem::CollectAllSplines(const FName OptionalActorTag/*=""*/, const FName OptionalCompTag/*=""*/)
 {
 	TArray<AActor*> PotentialActors;
@@ -34,7 +55,7 @@ void UCityGeneratorSubSystem::CollectAllSplines(const FName OptionalActorTag/*="
 	{
 		return;
 	}
-	CityGeneratorSplineArray.Empty();
+	CityGeneratorSplineSet.Empty();
 	for (const auto PotentialActor : PotentialActors)
 	{
 		TArray<UActorComponent*> ComponentsByClass;
@@ -55,24 +76,23 @@ void UCityGeneratorSubSystem::CollectAllSplines(const FName OptionalActorTag/*="
 			USplineComponent* SplineComp = Cast<USplineComponent>(Component);
 			if (nullptr != SplineComp)
 			{
-				CityGeneratorSplineArray.Emplace(SplineComp);
+				CityGeneratorSplineSet.Emplace(SplineComp);
 			}
 		}
 	}
-	FString CountStr = FString::Printf(TEXT("Get %d SplineComps"), CityGeneratorSplineArray.Num());
-	UNotifyUtilities::ShowPopupMsgAtCorner(CountStr);
-	UE_LOG(LogTemp, Display, TEXT("%s"), *CountStr);
+	UNotifyUtilities::ShowPopupMsgAtCorner( FString::Printf(TEXT("Get %d SplineComps"), CityGeneratorSplineSet.Num()));
+	bNeedRefreshSplineData=false;
 }
 
 void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FString& FilePath, bool bSaveActorTag,
-                                               bool bSaveCompTag, bool bForceRecollect)
+                                               bool bSaveCompTag)
 {
 	//验证是否包含数据
-	if (bForceRecollect)
+	if (bNeedRefreshSplineData)
 	{
 		CollectAllSplines();
 	}
-	if (CityGeneratorSplineArray.IsEmpty())
+	if (CityGeneratorSplineSet.IsEmpty())
 	{
 		UNotifyUtilities::ShowMsgDialog(EAppMsgType::Ok,
 		                                TEXT("CityGeneratorSplineArray Is Empty,Please Collect First!"));
@@ -125,7 +145,7 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 	//场景中所有Spline数据
 	TArray<TSharedPtr<FJsonValue>> SplineDataArray;
 	int32 SplineCounter = 0;
-	for (const TWeakObjectPtr<USplineComponent> SingleSpline : CityGeneratorSplineArray)
+	for (const TWeakObjectPtr<USplineComponent> SingleSpline : CityGeneratorSplineSet)
 	{
 		if (!SingleSpline.IsValid()) { continue; }
 		TStrongObjectPtr<USplineComponent> TargetSpline = SingleSpline.Pin();
@@ -232,7 +252,7 @@ void UCityGeneratorSubSystem::SerializeSplines(const FString& FileName, const FS
 	UE_LOG(LogTemp, Display, TEXT("Json Res:[%s]"), *SerializeStr);
 	FFileHelper::SaveStringToFile(SerializeStr, *TargetDir);
 	UNotifyUtilities::ShowPopupMsgAtCorner(FString::Printf(
-		TEXT("Save Scene Spline Data Finished!Save %d,Total %d)"), SplineCounter, CityGeneratorSplineArray.Num()));
+		TEXT("Save Scene Spline Data Finished!Save %d,Total %d)"), SplineCounter, CityGeneratorSplineSet.Num()));
 }
 
 void UCityGeneratorSubSystem::DeserializeSplines(const FString& FileFullPath, bool bTryParseActorTag,
@@ -440,21 +460,21 @@ TObjectPtr<USplineComponent> UCityGeneratorSubSystem::AddSplineCompToExistActor(
 
 TSet<TWeakObjectPtr<USplineComponent>> UCityGeneratorSubSystem::GetSplines()
 {
-	if (CityGeneratorSplineArray.IsEmpty())
+	if (bNeedRefreshSplineData)
 	{
 		CollectAllSplines();
 	}
 	else
 	{
-		for (auto& SplineComp : CityGeneratorSplineArray)
+		for (auto& SplineComp : CityGeneratorSplineSet)
 		{
 			if (!SplineComp.IsValid())
 			{
-				CityGeneratorSplineArray.Remove(SplineComp);
+				CityGeneratorSplineSet.Remove(SplineComp);
 			}
 		}
 	}
-	return CityGeneratorSplineArray;
+	return CityGeneratorSplineSet;
 }
 
 TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
@@ -477,7 +497,7 @@ void UCityGeneratorSubSystem::GenerateRoads(USplineComponent* TargetSpline)
 		if (UserChoice == EAppReturnType::Yes)
 		{
 			CollectAllSplines();
-			for (const TWeakObjectPtr<USplineComponent>& SplineComponent : CityGeneratorSplineArray)
+			for (const TWeakObjectPtr<USplineComponent>& SplineComponent : CityGeneratorSplineSet)
 			{
 				if (SplineComponent.IsValid())
 				{
