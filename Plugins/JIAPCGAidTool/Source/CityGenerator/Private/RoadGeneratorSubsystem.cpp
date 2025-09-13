@@ -189,6 +189,7 @@ TArray<FVector> URoadGeneratorSubsystem::FindAllIntersections()
 			{
 				continue;
 			}
+			ProcessedPairs.Emplace(IndexPair);
 			FVector2D IteratorSegmentStart = FVector2D(AllSegments[i].StartTransform.GetLocation());
 			FVector2D IteratorSegmentEnd = FVector2D(AllSegments[i].EndTransform.GetLocation());
 			FVector2D TestingSegmentStart = FVector2D(OverlappedSegment.StartTransform.GetLocation());
@@ -224,52 +225,38 @@ bool URoadGeneratorSubsystem::Get2DIntersection(const FVector2D& InSegmentAStart
                                                 const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
                                                 FVector2D& OutIntersection)
 {
-	//消元法
-	/*double Denominator = (InSegmentAEnd.X - InSegmentAStart.X) * (InSegmentBEnd.Y - InSegmentBStart.Y) - (InSegmentAEnd.
-		Y - InSegmentAStart.Y) * (InSegmentBEnd.X - InSegmentBStart.X);
-	if (Denominator != 0)
+	//快速排斥测试
+	if (FMath::Max(InSegmentAStart.X, InSegmentAEnd.X) < FMath::Min(InSegmentBStart.X, InSegmentBEnd.X) ||
+		FMath::Max(InSegmentBStart.X, InSegmentBEnd.X) < FMath::Min(InSegmentAStart.X, InSegmentAEnd.X) ||
+		FMath::Max(InSegmentAStart.Y, InSegmentAEnd.Y) < FMath::Min(InSegmentBStart.Y, InSegmentBEnd.Y) ||
+		FMath::Max(InSegmentBStart.Y, InSegmentBEnd.Y) < FMath::Min(InSegmentAStart.Y, InSegmentAEnd.Y))
 	{
-		double IntersectionT = ((InSegmentBStart.X - InSegmentAStart.X) * (InSegmentBEnd.Y - InSegmentBStart.Y) - (
-				InSegmentBStart.Y - InSegmentAStart.Y) * (InSegmentBEnd.X - InSegmentBStart.X)) /
-			Denominator;
-		double IntersectionS = ((InSegmentBStart.X - InSegmentAStart.X) * (InSegmentAEnd.Y - InSegmentAStart.Y) - (
-				InSegmentBEnd.Y - InSegmentAStart.Y) * (InSegmentAEnd.X - InSegmentAStart.X)) /
-			Denominator;
-		if (0.0 <= IntersectionT && IntersectionT <= 1.0 && 0.0 <= IntersectionS && IntersectionS <= 1.0)
-		{
-			FVector2D Intersection{
-				InSegmentAStart.X + IntersectionT * (InSegmentAEnd.X - InSegmentAStart.X),
-				InSegmentAStart.Y + IntersectionT * (InSegmentAEnd.Y - InSegmentAStart.Y)
-			};
-			OutIntersection = Intersection;
-			return true;
-		}
+		return false;
 	}
-	return false;*/
-    
+
 	// 计算线段AB和CD的参数方程交点
-	FVector2D CmP = InSegmentBStart - InSegmentAStart;
-	FVector2D r = InSegmentAEnd - InSegmentAStart;
-	FVector2D s = InSegmentBEnd - InSegmentBStart;
-    
-	float Crs = r ^ s;
-	float CmPxr = CmP ^ r;
-    
-	if (FMath::Abs(Crs) < KINDA_SMALL_NUMBER)
+	FVector2D VectorA = (InSegmentAEnd - InSegmentAStart);
+	FVector2D VectorB = (InSegmentBEnd - InSegmentBStart);
+	FVector2D VectorABStart = InSegmentBStart - InSegmentAStart;
+	//叉积获得AB逆时针夹角的Sin值，Sin值为0时两向量平行或共线
+	float Denominator = FVector2D::CrossProduct(VectorA, VectorB);
+	if (FMath::IsNearlyZero(Denominator))
 	{
-		return false; // 平行或共线
+		return false;
 	}
-    
-	float t = (CmP ^ s) / Crs;
-	float u = CmPxr / Crs;
-    
-	if ((t >= 0.0f) && (t <= 1.0f) && (u >= 0.0f) && (u <= 1.0f))
+	//直线参数方程
+	//(X0,Y0)=AStart+t*VectorA=BStart+S*VectorB
+	//使用三角形相似计算比值
+	float t = FVector2D::CrossProduct(VectorABStart, VectorB) / Denominator;
+	float s = FVector2D::CrossProduct(VectorABStart, VectorA) / Denominator;
+
+	if (t >= 0.0f && t <= 1.0f && s >= 0.0f && s <= 1.0f)
 	{
 		// 计算交点
-		OutIntersection = InSegmentAStart + t * (InSegmentAEnd - InSegmentAStart);
+		OutIntersection = InSegmentAStart + t * VectorA;
 		return true;
 	}
-    
+
 	return false;
 }
 
