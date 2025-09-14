@@ -55,6 +55,11 @@ protected:
 };
 
 
+/**
+ * 该类主要实现以下内容：
+ * 1.承接CityGenerator类中用户输入的Spline信息，将其转换为PolyLineSegment并计算交点
+ * 2.生成RoadActor和IntersectionActor，为其挂载的Generator传递核心Segment信息，由Generator负责结构细化和具体生成
+ */
 UCLASS()
 class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 {
@@ -72,12 +77,29 @@ public:
 #pragma region GenerateIntersection
 
 public:
+	/**
+	 * 对外接口，选择性更新样条信息、计算交点生成Actor
+	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateIntersections();
+
+
 	/**
-	 * 初始化样条信息，从CityGeneratorSubsystem中获取有效的Spline信息，调用UpdateSplineSegments把样条转换为芬顿数据
-	 * @return 成功获取至少一条样条返回true
+	* 四叉树网格计算最小网格边长
+	*/
+	const float MinimumQuadSize = 100.f;
+
+
+	/**
+	 * 交点合并阈值，此范围内的交点会被合并为同一点
 	 */
+	const float MergeThreshold = 200.0f;
+
+protected:
+	/**
+	* 初始化样条信息，从CityGeneratorSubsystem中获取有效的Spline信息，调用UpdateSplineSegments把样条转换为芬顿数据
+	* @return 成功获取至少一条样条返回true
+	*/
 	UFUNCTION(BlueprintCallable)
 	bool InitialRoadSplines();
 	/**
@@ -94,19 +116,6 @@ public:
 	 */
 	//UFUNCTION(BlueprintCallable)
 	[[nodiscard]] TArray<FSplineIntersection> FindAllIntersections();
-
-	/**
-	* 四叉树网格计算最小网格边长
-	*/
-	const float MinimumQuadSize = 100.f;
-
-
-	/**
-	 * 交点合并阈值，此范围内的交点会被合并为同一点
-	 */
-	const float MergeThreshold = 200.0f;
-
-protected:
 	/**
 	 * 记录样条、样条分段数据
 	 */
@@ -118,31 +127,11 @@ protected:
 	TQuadTree<FSplinePolyLineSegment> SplineQuadTree{FBox2D()};
 
 
-	/**
-	 * 使用参数法计算传入的直线段SegmentA和SegmentB在Start-End范围内的交点，使用快速排斥算法剪枝
-	 * @param InSegmentAStart 待测试直线段A起点
-	 * @param InSegmentAEnd 待测试直线段A终点
-	 * @param InSegmentBStart 待测试直线段B起点
-	 * @param InSegmentBEnd 待测试直线段B终点
-	 * @param OutIntersection 交点（如存在）
-	 * @return SegmentA和SegmentB在Start-End范围内是否存在交点
-	 */
-	bool Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
-	                       const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
-	                       FVector2D& OutIntersection);
 
-
-	/**
-	 * 使用贝塞尔样条拟合、使用Newton-Raphson法计算两条样条线的交点
-	 * @param TargetSplineA 待测试样条A
-	 * @param TargetSplineB 待测试样条B
-	 * @param IntersectionsIn2DSpace 交点数组
-	 * @return 待测试样条A、B在样条全长内是否存在交点
-	 */
-	bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
-	                       TArray<FVector2D>& IntersectionsIn2DSpace);
 
 	TArray<TWeakObjectPtr<UIntersectionMeshGenerator>> RoadIntersectionsComps;
+
+	 bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,TArray<FIntersectionSegment>& OutSegments,float UniformDistance=2000.0f);
 
 #pragma endregion GenerateIntersection
 
@@ -182,9 +171,6 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth = 400.0f);
-
-
-	FVector CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint);
 
 protected:
 	/**

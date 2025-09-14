@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MeshGeneratorInterface.h"
-#include "RoadSegmentStruct.h"
+#include "Road/RoadSegmentStruct.h"
 #include "Components/ActorComponent.h"
 #include "IntersectionMeshGenerator.generated.h"
 
@@ -17,10 +17,20 @@ class CITYGENERATOR_API UIntersectionMeshGenerator : public UActorComponent, pub
 public:
 	// Sets default values for this component's properties
 	UIntersectionMeshGenerator();
-	
-	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
-	FSplineIntersection IntersectionData;
-	
+
+	//UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	//FSplineIntersection IntersectionData;
+
+	void SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData);
+
+
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
+protected:
+	[[nodiscard]]TArray<FVector2D> CreateExtrudeShape();
+
+	FVector CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint);
+
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	TArray<FIntersectionSegment> IntersectionsData;
 };

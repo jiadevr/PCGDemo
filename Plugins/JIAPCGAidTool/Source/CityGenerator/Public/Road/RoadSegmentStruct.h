@@ -55,6 +55,7 @@ USTRUCT(BlueprintType)
 struct FSplineIntersection
 {
 	GENERATED_BODY()
+
 public:
 	FSplineIntersection()
 	{
@@ -80,4 +81,32 @@ public:
 	TArray<int32> IntersectedSegmentIndex;
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	FVector WorldLocation = FVector::Zero();
+};
+
+USTRUCT(BlueprintType)
+struct FIntersectionSegment
+{
+	GENERATED_BODY()
+
+public:
+	FIntersectionSegment(){};
+
+	FIntersectionSegment(TWeakObjectPtr<USplineComponent>& InOwnerSplines, const FVector& InIntersectionEndPointWS,
+	                     bool bInIsFlowIn, float InRoadWidth): OwnerSpline(InOwnerSplines),
+	                                                           IntersectionEndPointWS(InIntersectionEndPointWS),
+	                                                           bIsFlowIn(bInIsFlowIn), RoadWidth(InRoadWidth)
+	{
+	}
+	~FIntersectionSegment()
+	{
+		OwnerSpline = nullptr;
+	};
+	UPROPERTY(VisibleInstanceOnly)
+	TWeakObjectPtr<USplineComponent> OwnerSpline;
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	FVector IntersectionEndPointWS = FVector::Zero();
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	bool bIsFlowIn = true;
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	float RoadWidth = 0;
 };
