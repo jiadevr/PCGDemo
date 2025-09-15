@@ -23,7 +23,8 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	//双向四车道是2*7.5米，双向六车道是2*11.25米
 	RoadPresetMap.Emplace(ELaneType::SingleWay, FLaneMeshInfo(400.0f, 20.0f));
 	RoadPresetMap.Emplace(ELaneType::TwoLaneTwoWay, FLaneMeshInfo(700.0f, 20.0f));
-	GEditor->OnComponentTransformChanged().AddUObject(this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
+	ComponentMoveHandle = GEditor->OnComponentTransformChanged().AddUObject(
+		this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
 }
 
 
@@ -43,6 +44,17 @@ void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, 
 	{
 		bNeedRefreshSegmentData = true;
 	}
+}
+
+void URoadGeneratorSubsystem::Deinitialize()
+{
+	SplineSegmentsInfo.Empty();
+	SplineQuadTree.Empty();
+	RoadIntersectionsComps.Empty();
+	IntersectionLocation.Empty();
+	SplineToMesh.Empty();
+	GEditor->OnComponentTransformChanged().Remove(ComponentMoveHandle);
+	Super::Deinitialize();
 }
 #pragma region GenerateIntersection
 void URoadGeneratorSubsystem::GenerateIntersections()
@@ -198,6 +210,7 @@ TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 		SplineQuadTree.Insert(SegmentWithIndex, SegmentBounds);
 	}
 
+	UE_LOG(LogTemp, Display, TEXT("Finish Insert To QuadTree"));
 	//用于接收四叉树查询结果
 	TArray<FSplinePolyLineSegment> OverlappedSegments;
 	//用于缓存四叉树处理过的样条分段,使用Segment的GlobalIndex
@@ -251,8 +264,9 @@ TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 			FVector2D TestingSegmentStart = FVector2D(OverlappedSegment.StartTransform.GetLocation());
 			FVector2D TestingSegmentEnd = FVector2D(OverlappedSegment.EndTransform.GetLocation());
 			FVector2D IntersectionLoc2D;
-			if (!URoadGeometryUtilities::Get2DIntersection(IteratorSegmentStart, IteratorSegmentEnd, TestingSegmentStart, TestingSegmentEnd,
-			                       IntersectionLoc2D))
+			if (!URoadGeometryUtilities::Get2DIntersection(IteratorSegmentStart, IteratorSegmentEnd,
+			                                               TestingSegmentStart, TestingSegmentEnd,
+			                                               IntersectionLoc2D))
 			{
 				continue;
 			}

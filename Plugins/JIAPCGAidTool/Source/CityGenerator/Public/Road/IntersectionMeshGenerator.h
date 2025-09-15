@@ -29,7 +29,7 @@ public:
 protected:
 	[[nodiscard]]TArray<FVector2D> CreateExtrudeShape();
 
-	FVector CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint);
+	FVector2D CalTransitionalTangentOnEdge(const FVector2D& Intersection, const FVector2D& EdgePoint);
 
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	TArray<FIntersectionSegment> IntersectionsData;

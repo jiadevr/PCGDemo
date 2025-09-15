@@ -19,8 +19,18 @@
 void UCityGeneratorSubSystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	GEngine->OnLevelActorAdded().AddUObject(this, &UCityGeneratorSubSystem::OnSplineActorChanged);
-	GEngine->OnLevelActorDeleted().AddUObject(this, &UCityGeneratorSubSystem::OnSplineActorChanged);
+	ActorAddedHandle = GEngine->OnLevelActorAdded().AddUObject(this, &UCityGeneratorSubSystem::OnSplineActorChanged);
+	ActorRemovedHandle = GEngine->OnLevelActorDeleted().
+	                              AddUObject(this, &UCityGeneratorSubSystem::OnSplineActorChanged);
+}
+
+void UCityGeneratorSubSystem::Deinitialize()
+{
+	GEngine->OnLevelActorAdded().Remove(ActorAddedHandle);
+	GEngine->OnLevelActorDeleted().Remove(ActorRemovedHandle);
+	RoadSubsystem = nullptr;
+	CityGeneratorSplineSet.Empty();
+	Super::Deinitialize();
 }
 
 void UCityGeneratorSubSystem::OnSplineActorChanged(AActor* LevelActor)

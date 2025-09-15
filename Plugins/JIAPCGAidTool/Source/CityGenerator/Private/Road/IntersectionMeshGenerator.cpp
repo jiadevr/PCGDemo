@@ -7,6 +7,8 @@
 #include "Components/DynamicMeshComponent.h"
 #include "Road/RoadSegmentStruct.h"
 #include "Components/SplineComponent.h"
+#include "GeometryScript/MeshNormalsFunctions.h"
+#include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Road/RoadGeometryUtilities.h"
 
@@ -40,10 +42,28 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 		UNotifyUtilities::ShowPopupMsgAtCorner(
 			FString::Printf(
 				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
+		return false;
 	}
 	TArray<FVector2D> ExtrudeShape = CreateExtrudeShape();
-	//@TODO:Extrue路口
-	return false;
+	if (ExtrudeShape.IsEmpty())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner(
+			FString::Printf(
+				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
+		return false;
+	}
+	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
+	FTransform ExtrudeMeshTrans = FTransform::Identity;
+	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSimpleExtrudePolygon(
+		MeshComponent->GetDynamicMesh(), GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, 30.0f);
+	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshComponent->GetDynamicMesh());
+	FGeometryScriptSplitNormalsOptions SplitOptions;
+	FGeometryScriptCalculateNormalsOptions CalculateOptions;
+	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
+	                                                                 CalculateOptions);
+	UNotifyUtilities::ShowPopupMsgAtCorner(
+		FString::Printf(TEXT("%s Generate Intersection Finished!"), *Owner->GetActorLabel()));
+	return true;
 }
 
 void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshComponent)
@@ -56,52 +76,69 @@ void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* I
 
 TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 {
-	//
-	TArray<FVector2D> IntersectionSegments;
+	//保持整体连贯性，所有FVector转成2D计算
+	TArray<FVector2D> IntersectionConstructionPoints;
 	AActor* Owner = GetOwner();
 	if (nullptr == GetOwner())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error:Found Null Owner");
-		return IntersectionSegments;
+		return IntersectionConstructionPoints;
 	}
-
 	const int32 IntersectionSegmentNum = IntersectionsData.Num();
-	const FVector CenterLocation = Owner->GetActorLocation();
+	IntersectionConstructionPoints.Reserve(IntersectionSegmentNum * 10);
+	const FVector2D CenterLocation(Owner->GetActorLocation());
 	//每个中心线生成左右两个线段，共4个端点
-	TArray<FVector> RoadEdgePoints;
+	TArray<FVector2D> RoadEdgePoints;
 	RoadEdgePoints.Reserve(IntersectionSegmentNum * 4);
 	//为了让Segment可以相交，需要把线段延长
-	static const double SegmentScalar = 1.25;
+	static const double SegmentScalar = 1.5;
 	//先计算Offset之后的点，先右后左
+	FlushPersistentDebugLines(GetWorld());
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
-		FVector VectorToCenter = IntersectionsData[i].IntersectionEndPointWS - CenterLocation;
-		FVector FlowDir = (VectorToCenter * (IntersectionsData[i].bIsFlowIn ? -1.0 : 1.0)).GetSafeNormal();
-		FVector RightEdge = FVector::CrossProduct(FlowDir, FVector::UpVector) * IntersectionsData[i].
+		const FVector2D CurrentSegmentEndPoint2D(IntersectionsData[i].IntersectionEndPointWS);
+		//中心点显示流入为绿色，流出为橙色
+		/*DrawDebugSphere(GetWorld(), IntersectionsData[i].IntersectionEndPointWS, 20.0f, 8, (IntersectionsData[i].bIsFlowIn?FColor::Green:FColor::Orange), true, -1, 0,
+		                5);*/
+		const FVector2D VectorToCenter = FVector2D(CenterLocation - CurrentSegmentEndPoint2D);
+		//const FVector2D FlowDir =(VectorToCenter /* (IntersectionsData[i].bIsFlowIn ? 1.0 : -1.0)*/).GetSafeNormal();
+
+		FVector2D RightEdge = VectorToCenter.GetSafeNormal().GetRotated(90.0) * IntersectionsData[i].
 			RoadWidth * 0.5;
 		//以FlowDir为基准,右侧两个点
-		RoadEdgePoints.Emplace(IntersectionsData[i].IntersectionEndPointWS + RightEdge);
-		RoadEdgePoints.
-			Emplace(IntersectionsData[i].IntersectionEndPointWS + RightEdge + VectorToCenter * SegmentScalar);
+		FVector2D RightMid = CurrentSegmentEndPoint2D + RightEdge;
+		FVector2D RightStart = RightMid - VectorToCenter * SegmentScalar;
+		RoadEdgePoints.Emplace(RightStart);
+		FVector2D RightEnd = RightMid + VectorToCenter * SegmentScalar;
+		RoadEdgePoints.Emplace(RightEnd);
+		//右侧红线
+		/*DrawDebugDirectionalArrow(GetWorld(), FVector(RightStart, 0.0), FVector(RightEnd, 0.0), 100.0f, FColor::Red,
+		                          true);*/
+
 		//以FlowDir为基准,左侧两个点
-		RoadEdgePoints.Emplace(IntersectionsData[i].IntersectionEndPointWS + (RightEdge * -1.0));
-		RoadEdgePoints.
-			Emplace(IntersectionsData[i].IntersectionEndPointWS + (RightEdge * -1.0) + VectorToCenter * SegmentScalar);
+		FVector2D LeftMid = CurrentSegmentEndPoint2D + RightEdge * -1.0;
+		FVector2D LeftStart = LeftMid - VectorToCenter * SegmentScalar;
+		RoadEdgePoints.Emplace(LeftStart);
+		FVector2D LeftEnd = LeftMid + VectorToCenter * SegmentScalar;
+		RoadEdgePoints.Emplace(LeftEnd);
+		//左侧蓝线
+		/*DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
+		                          true);*/
 	}
 	//由于传入节点已经排序，线段只会和相邻的相交，单循环可以解决
 	//记录样条相交情况和交点Index，交点保存于EdgeIntersections
 	TMap<TPair<int32, int32>, int32> Visited;
-	TArray<FVector> EdgeIntersections;
+	TArray<FVector2D> EdgeIntersections;
 	EdgeIntersections.Reserve(IntersectionSegmentNum);
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
 		for (int32 j = -1; j <= 1; j += 2)
 		{
-			//线段经过逆时针排序，右侧线段为i-1，左侧线段为i+1
-			int32 TargetSegmentIndex = FMath::Modulo(i + j, IntersectionSegmentNum);
+			//线段经过逆时针排序，右侧线段为i-1，左侧线段为i+1；函数不能接受负值
+			int32 TargetSegmentIndex = FMath::Modulo(i + j + IntersectionSegmentNum, IntersectionSegmentNum);
 			TPair<int32, int32> Visitor;
-			Visitor.Key = i < TargetSegmentIndex ? i : j;
-			Visitor.Value = i < TargetSegmentIndex ? j : i;
+			Visitor.Key = i < TargetSegmentIndex ? i : TargetSegmentIndex;
+			Visitor.Value = i < TargetSegmentIndex ? TargetSegmentIndex : i;
 			//已经访问过
 			if (Visited.Contains(Visitor))
 			{
@@ -116,48 +153,77 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			 * 本段Segment左侧边线对应Index 4*i+2; 4*i+3
 			 * 目标Segment左侧边线对应Index 4*(i-1)+0; 4*(i-1)+1
 			 */
-			FVector2D CurrentSegmentEdgeStart = FVector2D(RoadEdgePoints[4 * i + 1 + j]);
-			FVector2D CurrentSegmentEdgeEnd = FVector2D(RoadEdgePoints[4 * i + 2 + j]);
-			FVector2D TargetSegmentEdgeStart = FVector2D(RoadEdgePoints[4 * TargetSegmentIndex + 1 + (-j)]);
-			FVector2D TargetSegmentEdgeEnd = FVector2D(RoadEdgePoints[4 * TargetSegmentIndex + 2 + (-j)]);
+			FVector2D CurrentSegmentEdgeStart = RoadEdgePoints[4 * i + 1 + j];
+			FVector2D CurrentSegmentEdgeEnd = RoadEdgePoints[4 * i + 2 + j];
+			FVector2D TargetSegmentEdgeStart = RoadEdgePoints[4 * TargetSegmentIndex + 1 + (-j)];
+			FVector2D TargetSegmentEdgeEnd = RoadEdgePoints[4 * TargetSegmentIndex + 2 + (-j)];
 			FVector2D EdgeIntersectionWS;
 			int ResultIndex = -1;
 			if (URoadGeometryUtilities::Get2DIntersection(CurrentSegmentEdgeStart, CurrentSegmentEdgeEnd,
 			                                              TargetSegmentEdgeStart, TargetSegmentEdgeEnd,
 			                                              EdgeIntersectionWS))
 			{
-				ResultIndex = EdgeIntersections.Emplace(FVector(EdgeIntersectionWS, 0.0));
+				ResultIndex = EdgeIntersections.Emplace(EdgeIntersectionWS);
 			}
 			Visited.Emplace(Visitor, ResultIndex);
 		}
 	}
 	//交点计算完毕获得在相交内容之间插值获得弧线过渡
+	//不添加SplineComponent，直接使用
+	FInterpCurveVector2D TransitionalSpline;
+	TArray<FVector2D> TransitionalSplinePoints;
+	TransitionalSplinePoints.SetNum(10);
+	//Set不保序
 	for (const auto& EdgeIntersectionElem : Visited)
 	{
-		int32 FromEdgeIndex = EdgeIntersectionElem.Key.Key;
-		//@TODO:缺Rotator,得传进来
-		FSplinePoint FromPoint(0.0, RoadEdgePoints[FromEdgeIndex], ESplinePointType::Curve);
-		int32 ToEdgeIndex = EdgeIntersectionElem.Key.Value;
-		FSplinePoint ToPoint(1.0, RoadEdgePoints[ToEdgeIndex], ESplinePointType::Curve);
-		int32 IntersectionIndex = EdgeIntersectionElem.Value;
-		FSplinePoint TransactionPoint(0.5, EdgeIntersections[IntersectionIndex], ESplinePointType::Curve);
-		if (-1 == IntersectionIndex)
+		if (-1 == EdgeIntersectionElem.Value)
 		{
-			ensureAlwaysMsgf(false, TEXT("Find Null Intersection Between Neighbors"));
+			//ensureMsgf(false, TEXT("Find Null Intersection Between Neighbors"));
 			continue;
 		}
-		FSpline TransactionSpline;
-		//@TODO:细分过渡段，需要看SplineComponent的实现方式
-		TransactionSpline.AddPoint()
+		FVector2D EdgeIntersectionLoc = RoadEdgePoints[EdgeIntersectionElem.Value];
+		//这里拿到的是样条编号，小的排在前边，也就是说每一段都从左到右，取Start的左边界和To的右边界
+		int32 FromSegmentIndex = EdgeIntersectionElem.Key.Key;
+		FVector2D FromEdgeStartLoc = RoadEdgePoints[4 * FromSegmentIndex + 2];
+		FVector2D FromEdgeTangent = CalTransitionalTangentOnEdge(EdgeIntersectionLoc, FromEdgeStartLoc);
+		FInterpCurvePoint FromPoint(0.0, FromEdgeStartLoc, -FromEdgeTangent, FromEdgeTangent, CIM_CurveAuto);
+
+		int32 ToSegmentIndex = EdgeIntersectionElem.Key.Value;
+		FVector2D ToEdgeStartLoc = RoadEdgePoints[4 * ToSegmentIndex];
+		FVector2D ToEdgeTangent = CalTransitionalTangentOnEdge(EdgeIntersectionLoc, FromEdgeStartLoc);
+		FInterpCurvePoint ToPoint(1.0, ToEdgeStartLoc, -ToEdgeTangent, ToEdgeTangent, CIM_CurveAuto);
+
+		TransitionalSpline.Reset();
+		TransitionalSpline.Points.Add(FromPoint);
+		TransitionalSpline.Points.Add(FromPoint);
+		TransitionalSplinePoints[0] = FromEdgeStartLoc;
+		for (int i = 1; i < 9; ++i)
+		{
+			float InputKey = i / 10.0f;
+			FVector2D SubdivisionLoc = TransitionalSpline.Eval(InputKey, FVector2D::Zero());
+			TransitionalSplinePoints[i] = SubdivisionLoc;
+		}
+		TransitionalSplinePoints[9] = ToEdgeStartLoc;
+		IntersectionConstructionPoints.Append(TransitionalSplinePoints);
 	}
-	//@TODO：整理点顺序
-	return IntersectionSegments;
+	URoadGeometryUtilities::SortPointCounterClockwise(CenterLocation, IntersectionConstructionPoints);
+	for (int i = 0; i < IntersectionConstructionPoints.Num(); ++i)
+	{
+		uint8 ColorGreenDepth = i * 255 / IntersectionConstructionPoints.Num();
+		DrawDebugSphere(GetWorld(), FVector(IntersectionConstructionPoints[i],0.0), 20.0f, 8,
+		               FColor(0, 0, ColorGreenDepth), true, -1, 0,
+		                5);
+		IntersectionConstructionPoints[i]=IntersectionConstructionPoints[i]-CenterLocation;
+	}
+
+	return IntersectionConstructionPoints;
 }
 
 
-FVector UIntersectionMeshGenerator::CalculateTangentPoint(const FVector& Intersection, const FVector& EdgePoint)
+FVector2D UIntersectionMeshGenerator::CalTransitionalTangentOnEdge(const FVector2D& Intersection,
+                                                                   const FVector2D& EdgePoint)
 {
-	FVector Dir = UKismetMathLibrary::GetDirectionUnitVector(EdgePoint, Intersection);
-	FVector Tangent = FVector::Dist(EdgePoint, Intersection) * 2 * Dir;
+	FVector2D Dir(UKismetMathLibrary::GetDirectionUnitVector(FVector(EdgePoint, 0.0), FVector(Intersection, 0.0)));
+	FVector2D Tangent = FVector2D::Distance(EdgePoint, Intersection) * 2 * Dir;
 	return Tangent;
 }

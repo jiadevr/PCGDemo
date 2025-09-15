@@ -5,7 +5,8 @@
 #include "Components/SplineComponent.h"
 
 bool URoadGeometryUtilities::Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
-	const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd, FVector2D& OutIntersection)
+                                               const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
+                                               FVector2D& OutIntersection)
 {
 	//快速排斥测试
 	if (FMath::Max(InSegmentAStart.X, InSegmentAEnd.X) < FMath::Min(InSegmentBStart.X, InSegmentBEnd.X) ||
@@ -43,7 +44,7 @@ bool URoadGeometryUtilities::Get2DIntersection(const FVector2D& InSegmentAStart,
 }
 
 bool URoadGeometryUtilities::Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
-	TArray<FVector2D>& IntersectionsIn2DSpace)
+                                               TArray<FVector2D>& IntersectionsIn2DSpace)
 {
 	TArray<FVector2D> Results;
 
@@ -147,4 +148,29 @@ bool URoadGeometryUtilities::Get2DIntersection(USplineComponent* TargetSplineA, 
 		}
 	}
 	return !IntersectionsIn2DSpace.IsEmpty();
+}
+
+void URoadGeometryUtilities::SortPointCounterClockwise(const FVector2D& Center, TArray<FVector2D>& ArrayToSort)
+{
+	ArrayToSort.Sort([&Center](const FVector2D& A, const FVector2D& B)
+	{
+		FVector2D ADir = A - Center;
+		FVector2D BDir = B - Center;
+		float AngleA = FMath::Atan2(ADir.Y, ADir.X);
+		float AngleB = FMath::Atan2(BDir.Y, BDir.X);
+
+		// 转换为[0, 2π)范围
+		if (AngleA < 0) AngleA += 2 * PI;
+		if (AngleB < 0) AngleB += 2 * PI;
+
+		if (AngleA != AngleB)
+		{
+			return AngleA < AngleB; // 极角小的排在前面
+		}
+		else
+		{
+			// 角度相同，按距离排序（近的在前）
+			return ADir.SizeSquared() < BDir.SizeSquared();
+		}
+	});
 }

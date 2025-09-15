@@ -18,6 +18,9 @@ class CITYGENERATOR_API UCityGeneratorSubSystem : public UEditorSubsystem
 	GENERATED_BODY()
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	FDelegateHandle ActorAddedHandle;
+	FDelegateHandle ActorRemovedHandle;
+	virtual void Deinitialize() override;
 protected:
 	/**
 	 * 绑定GEditor的Actor增删多播委托，设置bNeedRefreshSplineData=true,用于在必要时更新Spline列表

@@ -31,7 +31,7 @@ public:
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
 	}
 
-	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length = 500.0f)
+	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length = 1000.0f)
 	{
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
 		SampleLength = Length;
@@ -74,6 +74,10 @@ public:
 	 * @param MoveType 未使用
 	 */
 	void OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType);
+
+	FDelegateHandle ComponentMoveHandle;
+
+	virtual void Deinitialize() override;
 #pragma region GenerateIntersection
 
 public:
@@ -131,7 +135,7 @@ protected:
 
 	TArray<TWeakObjectPtr<UIntersectionMeshGenerator>> RoadIntersectionsComps;
 
-	 bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,TArray<FIntersectionSegment>& OutSegments,float UniformDistance=2000.0f);
+	 bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,TArray<FIntersectionSegment>& OutSegments,float UniformDistance=500.0f);
 
 #pragma endregion GenerateIntersection
 

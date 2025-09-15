@@ -38,4 +38,6 @@ public:
 	 */
 	static bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
 						   TArray<FVector2D>& IntersectionsIn2DSpace);
+
+	static void SortPointCounterClockwise(const FVector2D& Center,TArray<FVector2D>& ArrayToSort);
 };
