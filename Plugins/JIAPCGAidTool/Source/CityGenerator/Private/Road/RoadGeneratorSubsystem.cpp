@@ -193,8 +193,8 @@ TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 	for (const auto& SegmentWithIndex : AllSegments)
 	{
 		FBox2D SegmentBounds(ForceInit);
-		TotalBounds += FVector2D(SegmentWithIndex.StartTransform.GetLocation());
-		TotalBounds += FVector2D(SegmentWithIndex.EndTransform.GetLocation());
+		SegmentBounds += FVector2D(SegmentWithIndex.StartTransform.GetLocation());
+		SegmentBounds += FVector2D(SegmentWithIndex.EndTransform.GetLocation());
 		SplineQuadTree.Insert(SegmentWithIndex, SegmentBounds);
 	}
 
