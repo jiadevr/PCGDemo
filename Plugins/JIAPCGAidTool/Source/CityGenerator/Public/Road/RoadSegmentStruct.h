@@ -167,3 +167,51 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	float RoadWidth = 0;
 };
+
+//道路名称枚举
+UENUM()
+enum class ELaneType:uint8
+{
+	//次干路
+	COLLECTORROADS,
+	//主干路
+	ARTERIALROADS,
+	//快速路
+	EXPRESSWAYS,
+	MAX
+};
+
+//道路数据结构体
+USTRUCT()
+struct FLaneMeshInfo
+{
+	GENERATED_BODY()
+
+public:
+	FLaneMeshInfo()
+	{
+		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
+	}
+
+	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length = 1000.0f)
+	{
+		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
+		SampleLength = Length;
+	}
+
+	TArray<FVector2D> CrossSectionCoord;
+	float SampleLength = 500.0;
+
+protected:
+	static TArray<FVector2D> GetRectangle2DCoords(float Width, float Height, bool Clockwise = true)
+	{
+		TArray<FVector2D> Rectangle2DCoords;
+		Rectangle2DCoords.SetNum(4);
+		TArray<FVector2D> UnitShape{{0.5, 0.5}, {0.5, -0.5}, {-0.5, -0.5}, {-0.5, 0.5}};
+		for (int i = 0; i < UnitShape.Num(); ++i)
+		{
+			Rectangle2DCoords[i] = FVector2D(Width, Height) * UnitShape[i];
+		}
+		return Rectangle2DCoords;
+	}
+};

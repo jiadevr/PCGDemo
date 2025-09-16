@@ -24,6 +24,10 @@ public:
 	 */
 	void SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData);
 
+	FBox2D GetOccupiedBox() const
+	{
+		return OccupiedBox;
+	}
 
 	/**
 	 * IMeshGeneratorInterface接口，根据类内的IntersectionsData数据调用同一Owner下挂载的UDynamicMeshComponent创建路口Mesh
@@ -50,6 +54,7 @@ protected:
 	 */
 	FVector2D CalTransitionalTangentOnEdge(const FVector2D& Intersection, const FVector2D& EdgePoint);
 
+	FBox2D OccupiedBox;
 	/**
 	 * 包含信息见结构体RoadSegmentStruct.h
 	 */

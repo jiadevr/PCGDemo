@@ -14,6 +14,8 @@
 
 static TAutoConsoleVariable<bool> CVarOnlyDebugPoint(
 	TEXT("RIG.OnlyDebugPoint"), false,TEXT("Only Generate Points Ignore Meshes"), ECVF_Default);
+static TAutoConsoleVariable<bool> CVarHideGraphicDebug(
+	TEXT("RIG.HideGraphicDebug"), false,TEXT("Only Generate Points Ignore Meshes"), ECVF_Default);
 
 // Sets default values for this component's properties
 UIntersectionMeshGenerator::UIntersectionMeshGenerator()
@@ -21,11 +23,17 @@ UIntersectionMeshGenerator::UIntersectionMeshGenerator()
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
+	OccupiedBox(ForceInit);
 }
 
 void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData)
 {
 	IntersectionsData = InIntersectionData;
+}
+
+FBox2D UIntersectionMeshGenerator::GetIntersectionBoundingBox()
+{
+	FBO
 }
 
 bool UIntersectionMeshGenerator::GenerateMesh()
@@ -82,6 +90,8 @@ void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* I
 
 TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 {
+	OccupiedBox.Init();
+	bool bShowDebug = !CVarHideGraphicDebug.GetValueOnGameThread();
 	//保持整体连贯性，所有FVector转成2D计算
 	TArray<FVector2D> IntersectionConstructionPoints;
 	AActor* Owner = GetOwner();
@@ -102,10 +112,13 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
 		const FVector2D CurrentSegmentEndPoint2D(IntersectionsData[i].IntersectionEndPointWS);
-		//中心点显示流入为绿色，流出为橙色
-		DrawDebugSphere(GetWorld(), IntersectionsData[i].IntersectionEndPointWS, 20.0f, 8,
-		                (IntersectionsData[i].bIsFlowIn ? FColor::Green : FColor::Orange), true, -1, 0,
-		                5);
+		if (bShowDebug)
+		{
+			//中心点显示流入为绿色，流出为橙色
+			DrawDebugSphere(GetWorld(), IntersectionsData[i].IntersectionEndPointWS, 20.0f, 8,
+			                (IntersectionsData[i].bIsFlowIn ? FColor::Green : FColor::Orange), true, -1, 0,
+			                5);
+		}
 		const FVector2D VectorToCenter = FVector2D(CenterLocation - CurrentSegmentEndPoint2D);
 		//const FVector2D FlowDir =(VectorToCenter /* (IntersectionsData[i].bIsFlowIn ? 1.0 : -1.0)*/).GetSafeNormal();
 
@@ -117,9 +130,12 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		RoadEdgePoints.Emplace(RightStart);
 		FVector2D RightEnd = RightMid + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(RightEnd);
-		//右侧红线
-		DrawDebugDirectionalArrow(GetWorld(), FVector(RightStart, 0.0), FVector(RightEnd, 0.0), 100.0f, FColor::Red,
-		                          true);
+		if (bShowDebug)
+		{
+			//右侧红线
+			DrawDebugDirectionalArrow(GetWorld(), FVector(RightStart, 0.0), FVector(RightEnd, 0.0), 100.0f, FColor::Red,
+			                          true);
+		}
 
 		//以FlowDir为基准,左侧两个点
 		FVector2D LeftMid = CurrentSegmentEndPoint2D + RightEdge * -1.0;
@@ -127,9 +143,12 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		RoadEdgePoints.Emplace(LeftStart);
 		FVector2D LeftEnd = LeftMid + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(LeftEnd);
-		//左侧蓝线
-		DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
-		                          true);
+		if (bShowDebug)
+		{
+			//左侧蓝线
+			DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
+			                          true);
+		}
 	}
 	//由于传入节点已经排序，线段只会和相邻的相交，单循环可以解决
 	//记录样条相交情况和交点Index，交点保存于EdgeIntersections
@@ -157,8 +176,8 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			//这种情况是仅有两条线相交的时候能创建对侧
 			else
 			{
-				Visitor.Key=TargetSegmentIndex;
-				Visitor.Value =i;
+				Visitor.Key = TargetSegmentIndex;
+				Visitor.Value = i;
 			}
 			//已经访问过
 			if (Visited.Contains(Visitor))
@@ -185,9 +204,12 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			                                              EdgeIntersectionWS))
 			{
 				ResultIndex = EdgeIntersections.Emplace(EdgeIntersectionWS);
-				DrawDebugSphere(GetWorld(), FVector(EdgeIntersectionWS, 0.0), 20.0f, 8,
-				                FColor::Cyan, true, -1, 0,
-				                5);
+				if (bShowDebug)
+				{
+					DrawDebugSphere(GetWorld(), FVector(EdgeIntersectionWS, 0.0), 20.0f, 8,
+					                FColor::Cyan, true, -1, 0,
+					                5);
+				}
 			}
 			Visited.Emplace(Visitor, ResultIndex);
 		}
@@ -211,11 +233,12 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		FVector2D FromEdgeStartLoc = RoadEdgePoints[4 * FromSegmentIndex + 2];
 		FVector2D FromEdgeTangent = CalTransitionalTangentOnEdge(EdgeIntersectionLoc, FromEdgeStartLoc);
 		FInterpCurvePoint FromPoint(0.0, FromEdgeStartLoc, -FromEdgeTangent, FromEdgeTangent, CIM_CurveAuto);
-
+		OccupiedBox += FromEdgeStartLoc;
 		int32 ToSegmentIndex = EdgeIntersectionElem.Key.Value;
 		FVector2D ToEdgeStartLoc = RoadEdgePoints[4 * ToSegmentIndex];
 		FVector2D ToEdgeTangent = CalTransitionalTangentOnEdge(EdgeIntersectionLoc, ToEdgeStartLoc);
 		FInterpCurvePoint ToPoint(1.0, ToEdgeStartLoc, -ToEdgeTangent, ToEdgeTangent, CIM_CurveAuto);
+		OccupiedBox += ToEdgeStartLoc;
 
 		TransitionalSpline.Reset();
 		TransitionalSpline.Points.Add(FromPoint);
@@ -241,6 +264,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		DrawDebugSphere(GetWorld(), FVector(IntersectionConstructionPoints[i], 0.0), 20.0f, 8,
 		                FColor(0, 0, ColorGreenDepth), true, -1, 0,
 		                5);
+		//世界空间转局部空间
 		IntersectionConstructionPoints[i] = IntersectionConstructionPoints[i] - CenterLocation;
 	}
 

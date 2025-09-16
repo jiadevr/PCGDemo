@@ -10,54 +10,6 @@
 #include "RoadGeneratorSubsystem.generated.h"
 class UIntersectionMeshGenerator;
 class USplineComponent;
-//道路名称枚举
-UENUM()
-enum class ELaneType:uint8
-{
-	//次干路
-	COLLECTORROADS,
-	//主干路
-	ARTERIALROADS,
-	//快速路
-	EXPRESSWAYS,
-	MAX
-};
-
-//道路数据结构体
-USTRUCT()
-struct FLaneMeshInfo
-{
-	GENERATED_BODY()
-
-public:
-	FLaneMeshInfo()
-	{
-		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
-	}
-
-	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length = 1000.0f)
-	{
-		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
-		SampleLength = Length;
-	}
-
-	TArray<FVector2D> CrossSectionCoord;
-	float SampleLength = 500.0;
-
-protected:
-	static TArray<FVector2D> GetRectangle2DCoords(float Width, float Height, bool Clockwise = true)
-	{
-		TArray<FVector2D> Rectangle2DCoords;
-		Rectangle2DCoords.SetNum(4);
-		TArray<FVector2D> UnitShape{{0.5, 0.5}, {0.5, -0.5}, {-0.5, -0.5}, {-0.5, 0.5}};
-		for (int i = 0; i < UnitShape.Num(); ++i)
-		{
-			Rectangle2DCoords[i] = FVector2D(Width, Height) * UnitShape[i];
-		}
-		return Rectangle2DCoords;
-	}
-};
-
 
 /**
  * 该类主要实现以下内容：
@@ -70,6 +22,10 @@ class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 	GENERATED_BODY()
 
 public:
+	/**
+	 * 初始化数据，绑定SplineComponent移动事件
+	 * @param Collection 
+	 */
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	bool bNeedRefreshSegmentData = true;
 	/**
@@ -82,6 +38,7 @@ public:
 	FDelegateHandle ComponentMoveHandle;
 
 	virtual void Deinitialize() override;
+
 #pragma region GenerateIntersection
 
 public:
@@ -90,18 +47,19 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateIntersections();
-	
+
 	/**
 	* 四叉树网格计算最小网格边长
 	*/
 	const float MinimumQuadSize = 100.f;
-	
+
 	/**
 	 * 交点合并阈值，此范围内的交点会被合并为同一点
 	 */
 	const float MergeThreshold = 200.0f;
 
 protected:
+	bool bIntersectionsGenerated = false;
 	/**
 	* 初始化样条信息，从CityGeneratorSubsystem中获取有效的Spline信息，调用UpdateSplineSegments把样条转换为芬顿数据
 	* @return 成功获取至少一条样条返回true
@@ -133,7 +91,7 @@ protected:
 	TQuadTree<FSplinePolyLineSegment> SplineQuadTree{FBox2D()};
 
 	/**
-	 * 生成的路口Actor上挂载的
+	 * 生成的路口Actor上挂载的Component数组
 	 */
 	TArray<TWeakObjectPtr<UIntersectionMeshGenerator>> RoadIntersectionsComps;
 
@@ -144,14 +102,22 @@ protected:
 	  * @param UniformDistance 统一采样距离，后续可能改写
 	  * @return 返回是否拆分成功
 	  */
-	 bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,
-	                                 TArray<FIntersectionSegment>& OutSegments, float UniformDistance = 500.0f);
+	bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,
+	                                TArray<FIntersectionSegment>& OutSegments, float UniformDistance = 500.0f);
+
+	TMap<TWeakObjectPtr<USplineComponent>, TSet<TWeakObjectPtr<UIntersectionMeshGenerator>>> IntersectionCompOnSpline;
+
+	TArray<FSplinePolyLineSegment> GetInteractionOccupiedSegments(
+		TWeakObjectPtr<UIntersectionMeshGenerator> TargetIntersection) const;
 
 #pragma endregion GenerateIntersection
 
 #pragma region GenerateRoad
 
 public:
+	UFUNCTION(BlueprintCallable)
+	void GenerateRoads();
+
 	/**
 	 * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
 	 * @param TargetSpline 目标样条线
@@ -161,7 +127,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
-	                               const ELaneType LaneTypeEnum = ELaneType::SingleWay, float StartShrink = 0.0f,
+	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
 	                               float EndShrink = 0.0f);
 
 	float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 StartPointIndex);
@@ -179,7 +145,6 @@ public:
 	bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
 	                         float MaxResampleDistance, float StartShrink = 0.0,
 	                         float EndShrink = 0.0);
-
 
 protected:
 	/**

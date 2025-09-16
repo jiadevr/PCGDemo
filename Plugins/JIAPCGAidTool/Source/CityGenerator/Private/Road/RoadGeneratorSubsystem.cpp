@@ -77,6 +77,7 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 	}
 	RoadIntersectionsComps.Reserve(IntersectionResults.Num());
 	RoadIntersectionsComps.Reset();
+	IntersectionCompOnSpline.Reset();
 
 	TArray<FIntersectionSegment> IntersectionBuildData;
 	//对每一个交点生成Actor挂载
@@ -96,13 +97,24 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 				IntersectionActor, UDynamicMeshComponent::StaticClass());
 			UDynamicMeshComponent* MeshComp = Cast<UDynamicMeshComponent>(MeshCompTemp);
 			ensureAlwaysMsgf(MeshComp!=nullptr, TEXT("Error:Create DynamicMeshComp Failed"));
+
 			UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 				IntersectionActor, UIntersectionMeshGenerator::StaticClass());
 			UIntersectionMeshGenerator* GeneratorComp = Cast<UIntersectionMeshGenerator>(GeneratorCompTemp);
 			ensureAlwaysMsgf(GeneratorComp!=nullptr, TEXT("Error:Create IntersectionMeshGeneratorComp Failed"));
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetIntersectionSegmentsData(IntersectionBuildData);
+
 			RoadIntersectionsComps.Emplace(GeneratorComp);
+			for (const FIntersectionSegment& BuildData : IntersectionBuildData)
+			{
+				if (!IntersectionCompOnSpline.Contains(BuildData.OwnerSpline))
+				{
+					IntersectionCompOnSpline.Emplace(BuildData.OwnerSpline,
+					                                 TArray<TWeakObjectPtr<UIntersectionMeshGenerator>>());
+				}
+				IntersectionCompOnSpline[BuildData.OwnerSpline].Emplace(GeneratorComp);
+			}
 		}
 	}
 
@@ -112,6 +124,7 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 	{
 		IntersectionGenerator->GenerateMesh();
 	}
+	bIntersectionsGenerated = true;
 }
 
 bool URoadGeneratorSubsystem::InitialRoadSplines()
@@ -128,13 +141,12 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error::Find Null Spline");
 		return false;
 	}
-
+	bIntersectionsGenerated = false;
 	for (TWeakObjectPtr<USplineComponent> SplineComponent : RoadSplines)
 	{
 		USplineComponent* PinnedSplineComp = SplineComponent.Pin().Get();
 		UpdateSplineSegments(PinnedSplineComp);
 	}
-
 	return true;
 }
 
@@ -149,7 +161,7 @@ void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSplin
 	                                      PolyLinePoints);
 	if (PolyLinePoints.IsEmpty())
 	{
-		ensureAlwaysMsgf(!PolyLinePoints.IsEmpty(),TEXT("Get Empty PolyPointArray"));
+		ensureAlwaysMsgf(!PolyLinePoints.IsEmpty(), TEXT("Get Empty PolyPointArray"));
 		return;
 	}
 	TArray<FSplinePolyLineSegment> Segments;
@@ -382,7 +394,70 @@ bool URoadGeneratorSubsystem::TearIntersectionToSegments(
 #pragma endregion GenerateIntersection
 
 #pragma region GenerateRoad
+TArray<FSplinePolyLineSegment> URoadGeneratorSubsystem::GetInteractionOccupiedSegments(
+	TWeakObjectPtr<UIntersectionMeshGenerator> TargetIntersection) const
+{
+	TArray<FSplinePolyLineSegment> OverlappedSegments;
+	if (TargetIntersection.IsValid())
+	{
+		UIntersectionMeshGenerator* IntersectionMeshGenerator = TargetIntersection.Pin().Get();
+		FBox2D BoxOfIntersection = IntersectionMeshGenerator->GetOccupiedBox();
+		SplineQuadTree.GetElements(BoxOfIntersection, OverlappedSegments);
+	}
+	return OverlappedSegments;
+}
 
+void URoadGeneratorSubsystem::GenerateRoads()
+{
+	//如果Intersection已经生成则按照之前的信息
+	if (!bIntersectionsGenerated && bNeedRefreshSegmentData)
+	{
+		EAppReturnType::Type UserChoice = UNotifyUtilities::ShowMsgDialog(
+			EAppMsgType::OkCancel, "Please Generate Intersection First,Click [OK] To Generate Intersection", true);
+		//InitialRoadSplines();
+		if (UserChoice == EAppReturnType::Ok)
+		{
+			AsyncTask(ENamedThreads::GameThread, [this]()
+			{
+				this->GenerateIntersections();
+			});
+		}
+		return;
+	}
+	if (IntersectionCompOnSpline.IsEmpty() || SplineSegmentsInfo.IsEmpty())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Error:Find Null Spline");
+		return;
+	}
+	//需要把完整、连续的Spline提取出来
+	//使用四叉树提取可能存在十字路口的格子
+	for (auto AllSegmentOfSpline : SplineSegmentsInfo)
+	{
+		TWeakObjectPtr<USplineComponent> SplineRef = AllSegmentOfSpline.Key;
+		if (IntersectionCompOnSpline.Contains(SplineRef))
+		{
+			TSet<TWeakObjectPtr<UIntersectionMeshGenerator>> GeneratorsOnSpline = IntersectionCompOnSpline[SplineRef];
+			TArray<FSplinePolyLineSegment> PotentialOccupiedSegments;
+			for (const auto& Generator : GeneratorsOnSpline)
+			{
+				PotentialOccupiedSegments.Append(GetInteractionOccupiedSegments(Generator));
+			}
+			TArray<FSplinePolyLineSegment> OccupiedSegments;
+			//@TODO：这可能会比较耗，还有一种做法是遍历Intersection，然后把Spline-Segment中的值去掉
+			for (const FSplinePolyLineSegment& Segment : PotentialOccupiedSegments)
+			{
+				if (SplineRef != Segment.OwnerSpline)
+				{
+					continue;
+				}
+				OccupiedSegments.Emplace(Segment);
+			}
+		}
+		else
+		{
+		}
+	}
+}
 
 void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
                                                         ELaneType LaneTypeEnum, float StartShrink, float EndShrink)
@@ -596,6 +671,7 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
 }
+
 TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControlPoint(
 	const USplineComponent* TargetSpline, float TargetLength, int32 NeighborIndex, bool bIsBackTraverse,
 	float MaxResampleDistance, bool bIsClosedInterval)
