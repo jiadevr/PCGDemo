@@ -148,6 +148,11 @@ void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSplin
 	TArray<FVector> PolyLinePoints;
 	TargetSpline->ConvertSplineToPolyLine(ESplineCoordinateSpace::World, SampleDistance * SampleDistance,
 	                                      PolyLinePoints);
+	if (PolyLinePoints.IsEmpty())
+	{
+		ensureAlwaysMsgf(!PolyLinePoints.IsEmpty(),TEXT("Get Empty PolyPointArray"));
+		return;
+	}
 	TArray<FSplinePolyLineSegment> Segments;
 	const int32 SegmentCount = PolyLinePoints.Num() - 1;
 	Segments.SetNum(SegmentCount);

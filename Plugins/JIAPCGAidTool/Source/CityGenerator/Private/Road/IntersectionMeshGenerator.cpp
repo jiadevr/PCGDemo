@@ -52,7 +52,7 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
 		return false;
 	}
-	/*FGeometryScriptPrimitiveOptions GeometryScriptOptions;
+	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
 	FTransform ExtrudeMeshTrans = FTransform::Identity;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSimpleExtrudePolygon(
 		MeshComponent->GetDynamicMesh(), GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, 30.0f);
@@ -60,7 +60,7 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 	FGeometryScriptSplitNormalsOptions SplitOptions;
 	FGeometryScriptCalculateNormalsOptions CalculateOptions;
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
-	                                                                 CalculateOptions);*/
+	                                                                 CalculateOptions);
 	UNotifyUtilities::ShowPopupMsgAtCorner(
 		FString::Printf(TEXT("%s Generate Intersection Finished!"), *Owner->GetActorLabel()));
 	return true;
@@ -136,9 +136,16 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		{
 			//线段经过逆时针排序，右侧线段为i-1，左侧线段为i+1；函数不能接受负值
 			int32 TargetSegmentIndex = FMath::Modulo(i + j + IntersectionSegmentNum, IntersectionSegmentNum);
+			//统一格式方便后续剪枝
 			TPair<int32, int32> Visitor;
 			Visitor.Key = i < TargetSegmentIndex ? i : TargetSegmentIndex;
 			Visitor.Value = i < TargetSegmentIndex ? TargetSegmentIndex : i;
+			//最后连接一段需要额外处理，保证最后一段连接正确
+			if (Visitor.Key==0&&Visitor.Value==IntersectionSegmentNum-1)
+			{
+				Visitor.Key=Visitor.Value;
+				Visitor.Value=0;
+			}
 			//已经访问过
 			if (Visited.Contains(Visitor))
 			{
@@ -176,7 +183,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	FInterpCurveVector2D TransitionalSpline;
 	TArray<FVector2D> TransitionalSplinePoints;
 	TransitionalSplinePoints.SetNum(10);
-	//Set不保序
+	//Set不保序，所以后边依然需要排序
 	for (const auto& EdgeIntersectionElem : Visited)
 	{
 		if (-1 == EdgeIntersectionElem.Value)
