@@ -12,6 +12,8 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Road/RoadGeometryUtilities.h"
 
+static TAutoConsoleVariable<bool> CVarOnlyDebugPoint(
+	TEXT("RIG.OnlyDebugPoint"), false,TEXT("Only Generate Points Ignore Meshes"), ECVF_Default);
 
 // Sets default values for this component's properties
 UIntersectionMeshGenerator::UIntersectionMeshGenerator()
@@ -52,6 +54,10 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
 		return false;
 	}
+	if (CVarOnlyDebugPoint.GetValueOnGameThread())
+	{
+		return true;
+	}
 	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
 	FTransform ExtrudeMeshTrans = FTransform::Identity;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSimpleExtrudePolygon(
@@ -91,14 +97,15 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	TArray<FVector2D> RoadEdgePoints;
 	RoadEdgePoints.Reserve(IntersectionSegmentNum * 4);
 	//为了让Segment可以相交，需要把线段延长
-	static const double SegmentScalar = 1.5;
+	static const double SegmentScalar = 2.0;
 	//先计算Offset之后的点，先右后左
 	FlushPersistentDebugLines(GetWorld());
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
 		const FVector2D CurrentSegmentEndPoint2D(IntersectionsData[i].IntersectionEndPointWS);
 		//中心点显示流入为绿色，流出为橙色
-		DrawDebugSphere(GetWorld(), IntersectionsData[i].IntersectionEndPointWS, 20.0f, 8, (IntersectionsData[i].bIsFlowIn?FColor::Green:FColor::Orange), true, -1, 0,
+		DrawDebugSphere(GetWorld(), IntersectionsData[i].IntersectionEndPointWS, 20.0f, 8,
+		                (IntersectionsData[i].bIsFlowIn ? FColor::Green : FColor::Orange), true, -1, 0,
 		                5);
 		const FVector2D VectorToCenter = FVector2D(CenterLocation - CurrentSegmentEndPoint2D);
 		//const FVector2D FlowDir =(VectorToCenter /* (IntersectionsData[i].bIsFlowIn ? 1.0 : -1.0)*/).GetSafeNormal();
@@ -138,13 +145,19 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			int32 TargetSegmentIndex = FMath::Modulo(i + j + IntersectionSegmentNum, IntersectionSegmentNum);
 			//统一格式方便后续剪枝
 			TPair<int32, int32> Visitor;
-			Visitor.Key = i < TargetSegmentIndex ? i : TargetSegmentIndex;
-			Visitor.Value = i < TargetSegmentIndex ? TargetSegmentIndex : i;
-			//最后连接一段需要额外处理，保证最后一段连接正确
-			if (Visitor.Key==0&&Visitor.Value==IntersectionSegmentNum-1)
+			if (IntersectionSegmentNum > 2)
 			{
-				Visitor.Key=Visitor.Value;
-				Visitor.Value=0;
+				Visitor.Key = i < TargetSegmentIndex ? i : TargetSegmentIndex;
+				Visitor.Value = i < TargetSegmentIndex ? TargetSegmentIndex : i;
+				if (Visitor.Key == 0 && Visitor.Value == IntersectionSegmentNum - 1)
+				{
+					Visitor.Key = Visitor.Value;
+					Visitor.Value = 0;
+				}
+			}
+			else
+			{
+				Visitor = {TargetSegmentIndex, i};
 			}
 			//已经访问过
 			if (Visited.Contains(Visitor))
@@ -171,9 +184,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			                                              EdgeIntersectionWS))
 			{
 				ResultIndex = EdgeIntersections.Emplace(EdgeIntersectionWS);
-				DrawDebugSphere(GetWorld(), FVector(EdgeIntersectionWS,0.0), 20.0f, 8,
-					   FColor::Cyan, true, -1, 0,
-						5);
+				DrawDebugSphere(GetWorld(), FVector(EdgeIntersectionWS, 0.0), 20.0f, 8,
+				                FColor::Cyan, true, -1, 0,
+				                5);
 			}
 			Visited.Emplace(Visitor, ResultIndex);
 		}
@@ -216,14 +229,18 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		TransitionalSplinePoints[9] = ToEdgeStartLoc;
 		IntersectionConstructionPoints.Append(TransitionalSplinePoints);
 	}
-	URoadGeometryUtilities::SortPointCounterClockwise(CenterLocation, IntersectionConstructionPoints);
+	//TODO:这个排序算法需要优化每段本身基本有序;两线交点在判断同一侧时会出现点混乱
+	if (Visited.Num() > 2)
+	{
+		URoadGeometryUtilities::SortPointCounterClockwise(CenterLocation, IntersectionConstructionPoints);
+	}
 	for (int i = 0; i < IntersectionConstructionPoints.Num(); ++i)
 	{
 		uint8 ColorGreenDepth = i * 255 / IntersectionConstructionPoints.Num();
-		DrawDebugSphere(GetWorld(), FVector(IntersectionConstructionPoints[i],0.0), 20.0f, 8,
-		               FColor(0, 0, ColorGreenDepth), true, -1, 0,
+		DrawDebugSphere(GetWorld(), FVector(IntersectionConstructionPoints[i], 0.0), 20.0f, 8,
+		                FColor(0, 0, ColorGreenDepth), true, -1, 0,
 		                5);
-		IntersectionConstructionPoints[i]=IntersectionConstructionPoints[i]-CenterLocation;
+		IntersectionConstructionPoints[i] = IntersectionConstructionPoints[i] - CenterLocation;
 	}
 
 	return IntersectionConstructionPoints;
