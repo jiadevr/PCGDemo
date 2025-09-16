@@ -7,6 +7,9 @@
 class USplineComponent;
 
 
+/**
+ * 记录Spline切分出的多段线信息
+ */
 USTRUCT(BlueprintType)
 struct FSplinePolyLineSegment
 {
@@ -33,24 +36,53 @@ public:
 		OwnerSpline = nullptr;
 	}
 
+	/**
+	 * 所属的Spline信息
+	 */
 	UPROPERTY()
 	TWeakObjectPtr<USplineComponent> OwnerSpline = nullptr;
 
+	/**
+	 * 当前PolyLine的SegmentIndex
+	 */
 	int32 SegmentIndex = 0;
-	//这个值是为了排除ClosedLoop最后一点和第一点连接的情况，这边是为了多线程可以不访问Spline对象额外记录的
+
+	/**
+	 * 所在Spline被切割出的Segment总数
+	 * 这个值是为了排除ClosedLoop最后一点和第一点连接的情况，这边是为了多线程可以不访问Spline对象额外记录的
+	 */
 	int32 LastSegmentIndex = 0;
 
+	/**
+	 * Segment起点，世界空间位置
+	 */
 	FTransform StartTransform = FTransform::Identity;
 
+	/**
+	 * Segment终点，世界空间位置
+	 */
 	FTransform EndTransform = FTransform::Identity;
 
+	/**
+	 * 返回Segment全局ID，用于区分不同Segment
+	 * @return 返回ID值
+	 */
 	uint32 GetGlobalIndex() const { return GlobalIndex; }
 
 protected:
+	/**
+	 * 全局Segment递增序号
+	 */
 	static uint32 SegmentGlobalIndex;
+	/**
+	 * 自身的Segment编号
+	 */
 	uint32 GlobalIndex = 0;
 };
 
+/**
+ * 记录Spline的交点信息
+ */
 USTRUCT(BlueprintType)
 struct FSplineIntersection
 {
@@ -75,14 +107,26 @@ public:
 		IntersectedSplines.Empty();
 	}
 
-	//UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	
+	/**
+	 * 相交的样条线引用
+	 */
 	TArray<TWeakObjectPtr<USplineComponent>> IntersectedSplines;
+	/**
+	 * 样条线相交处的SegmentIndex
+	 */
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	TArray<int32> IntersectedSegmentIndex;
+	/**
+	 * 交点位置
+	 */
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	FVector WorldLocation = FVector::Zero();
 };
 
+/**
+ * 交点处提取出的Segments信息
+ */
 USTRUCT(BlueprintType)
 struct FIntersectionSegment
 {
@@ -101,12 +145,25 @@ public:
 	{
 		OwnerSpline = nullptr;
 	};
+	
+	/**
+	 * 所属的SplineComponent
+	 */
 	UPROPERTY(VisibleInstanceOnly)
 	TWeakObjectPtr<USplineComponent> OwnerSpline;
+	/**
+	 * 沿样条线方向的端点（交点为另一端点）
+	 */
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	FVector IntersectionEndPointWS = FVector::Zero();
+	/**
+	 * 方向（驶入驶出），以Distance判定
+	 */
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	bool bIsFlowIn = true;
+	/**
+	 * 道路宽度
+	 */
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	float RoadWidth = 0;
 };
