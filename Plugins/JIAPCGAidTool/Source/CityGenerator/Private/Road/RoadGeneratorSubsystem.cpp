@@ -107,7 +107,7 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 		}
 	}
 
-
+	FlushPersistentDebugLines(GetWorld());
 	//调用生成
 	for (const auto& IntersectionGenerator : RoadIntersectionsComps)
 	{

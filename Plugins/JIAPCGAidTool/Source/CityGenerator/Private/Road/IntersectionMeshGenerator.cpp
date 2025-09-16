@@ -99,7 +99,6 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	//为了让Segment可以相交，需要把线段延长
 	static const double SegmentScalar = 2.0;
 	//先计算Offset之后的点，先右后左
-	FlushPersistentDebugLines(GetWorld());
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
 		const FVector2D CurrentSegmentEndPoint2D(IntersectionsData[i].IntersectionEndPointWS);
@@ -155,9 +154,11 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 					Visitor.Value = 0;
 				}
 			}
+			//这种情况是仅有两条线相交的时候能创建对侧
 			else
 			{
-				Visitor = {TargetSegmentIndex, i};
+				Visitor.Key=TargetSegmentIndex;
+				Visitor.Value =i;
 			}
 			//已经访问过
 			if (Visited.Contains(Visitor))
