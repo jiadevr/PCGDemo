@@ -14,8 +14,12 @@ class USplineComponent;
 UENUM()
 enum class ELaneType:uint8
 {
-	SingleWay,
-	TwoLaneTwoWay,
+	//次干路
+	COLLECTORROADS,
+	//主干路
+	ARTERIALROADS,
+	//快速路
+	EXPRESSWAYS,
 	MAX
 };
 
@@ -86,14 +90,12 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateIntersections();
-
-
+	
 	/**
 	* 四叉树网格计算最小网格边长
 	*/
 	const float MinimumQuadSize = 100.f;
-
-
+	
 	/**
 	 * 交点合并阈值，此范围内的交点会被合并为同一点
 	 */
@@ -130,12 +132,20 @@ protected:
 	 */
 	TQuadTree<FSplinePolyLineSegment> SplineQuadTree{FBox2D()};
 
-
-
-
+	/**
+	 * 生成的路口Actor上挂载的
+	 */
 	TArray<TWeakObjectPtr<UIntersectionMeshGenerator>> RoadIntersectionsComps;
 
-	 bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,TArray<FIntersectionSegment>& OutSegments,float UniformDistance=500.0f);
+	/**
+	  * 根据样条交点产生的单个FSplineIntersection拆分为可以进行生成的基础信息FIntersectionSegment数组
+	  * @param InIntersectionInfo 传入交点信息
+	  * @param OutSegments 拆分为Segment数组
+	  * @param UniformDistance 统一采样距离，后续可能改写
+	  * @return 返回是否拆分成功
+	  */
+	 bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,
+	                                 TArray<FIntersectionSegment>& OutSegments, float UniformDistance = 500.0f);
 
 #pragma endregion GenerateIntersection
 
@@ -170,11 +180,6 @@ public:
 	                         float MaxResampleDistance, float StartShrink = 0.0,
 	                         float EndShrink = 0.0);
 
-	TArray<FVector> IntersectionLocation;
-	TMap<TWeakObjectPtr<USplineComponent>, TWeakObjectPtr<AActor>> SplineToMesh;
-
-	UFUNCTION(BlueprintCallable)
-	void GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth = 400.0f);
 
 protected:
 	/**

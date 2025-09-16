@@ -20,9 +20,10 @@
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	//双向四车道是2*7.5米，双向六车道是2*11.25米
-	RoadPresetMap.Emplace(ELaneType::SingleWay, FLaneMeshInfo(400.0f, 20.0f));
-	RoadPresetMap.Emplace(ELaneType::TwoLaneTwoWay, FLaneMeshInfo(700.0f, 20.0f));
+	//根据黑客帝国的数据
+	RoadPresetMap.Emplace(ELaneType::COLLECTORROADS, FLaneMeshInfo(500.0f, 20.0f));
+	RoadPresetMap.Emplace(ELaneType::ARTERIALROADS, FLaneMeshInfo(1000.0f, 20.0f));
+	RoadPresetMap.Emplace(ELaneType::EXPRESSWAYS, FLaneMeshInfo(2000.0f, 20.0f));
 	ComponentMoveHandle = GEditor->OnComponentTransformChanged().AddUObject(
 		this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
 }
@@ -51,8 +52,6 @@ void URoadGeneratorSubsystem::Deinitialize()
 	SplineSegmentsInfo.Empty();
 	SplineQuadTree.Empty();
 	RoadIntersectionsComps.Empty();
-	IntersectionLocation.Empty();
-	SplineToMesh.Empty();
 	GEditor->OnComponentTransformChanged().Remove(ComponentMoveHandle);
 	Super::Deinitialize();
 }
@@ -597,82 +596,6 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
 }
-
-void URoadGeneratorSubsystem::GenerateRoadInterSection(TArray<USplineComponent*> TargetSplines, float RoadWidth)
-{
-	if (TargetSplines.Num() < 2)
-	{
-		return;
-	}
-	//测试内容
-	FVector L0P0 = TargetSplines[0]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
-	FVector L0P1 = TargetSplines[0]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
-	FVector L1P0 = TargetSplines[1]->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
-	FVector L1P1 = TargetSplines[1]->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
-	//交点计算
-	TArray<FVector2D> Intersections2D;
-	if (!URoadGeometryUtilities::Get2DIntersection(TargetSplines[0], TargetSplines[1], Intersections2D))
-	{
-		return;
-	}
-	FlushPersistentDebugLines(GEditor->GetWorld());
-	// for (auto Intersection : Intersections2D)
-	// {
-	// 	FVector IntersectionPoint = FVector(Intersection, 0.0);
-	// 	DrawDebugSphere(TargetSplines[0]->GetWorld(), IntersectionPoint, 15.0f, 12, FColor::Purple, false, 20.0f);
-	// }
-
-	/*FVector L0P0O0 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
-		* 0.5f;
-	FVector L0P0O1 = L0P0 + TargetSplines[0]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
-		* -0.5f;
-	FVector L0P1O0 = L0P1 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
-		* 0.5f;
-	FVector L0P1O1 = L0P1 + TargetSplines[0]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
-		* -0.5f;
-	FVector L1P0O0 = L1P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
-		* 0.5f;
-	FVector L1P0O1 = L1P0 + TargetSplines[1]->GetRightVectorAtSplinePoint(0, ESplineCoordinateSpace::World) * RoadWidth
-		* -0.5f;
-	FVector L1P1O0 = L1P1 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
-		* 0.5f;
-	FVector L1P1O1 = L1P1 + TargetSplines[1]->GetRightVectorAtSplinePoint(1, ESplineCoordinateSpace::World) * RoadWidth
-		* -0.5f;
-	TArray<FVector> PointsAroundIntersection{L0P0O0, L0P0O1, L0P1O0, L0P1O1, L1P0O0, L1P0O1, L1P1O0, L1P1O1};
-	//对点进行顺时针排序
-	PointsAroundIntersection.Sort([&IntersectionPoint](const FVector& A, const FVector& B)
-	{
-		FVector ProjectedA = FVector::VectorPlaneProject((A - IntersectionPoint), FVector::UnitZ());
-		FVector2D RelA{ProjectedA.X, ProjectedA.Y};
-		FVector ProjectedB = FVector::VectorPlaneProject((B - IntersectionPoint), FVector::UnitZ());
-		FVector2D RelB{ProjectedB.X, ProjectedB.Y};
-
-		float AngleA = FMath::Atan2(RelA.Y, RelA.X);
-		float AngleB = FMath::Atan2(RelB.Y, RelB.X);
-
-		// 转换为[0, 2π)范围
-		if (AngleA < 0) AngleA += 2 * PI;
-		if (AngleB < 0) AngleB += 2 * PI;
-
-		if (AngleA != AngleB)
-		{
-			return AngleA < AngleB; // 极角小的排在前面
-		}
-		else
-		{
-			// 角度相同，按距离排序（近的在前）
-			return RelA.SizeSquared() < RelB.SizeSquared();
-		}
-	});
-	const int32 PointCount = PointsAroundIntersection.Num();
-	for (int32 i = 0; i < PointsAroundIntersection.Num(); ++i)
-	{
-		FColor DebugColor = FColor(255 * i / PointCount, 0, 0, 255);
-		DrawDebugSphere(TargetSplines[0]->GetWorld(), PointsAroundIntersection[i], 20.0f, 12, DebugColor, false,
-		                20.0f);
-	}*/
-}
-
 TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControlPoint(
 	const USplineComponent* TargetSpline, float TargetLength, int32 NeighborIndex, bool bIsBackTraverse,
 	float MaxResampleDistance, bool bIsClosedInterval)
