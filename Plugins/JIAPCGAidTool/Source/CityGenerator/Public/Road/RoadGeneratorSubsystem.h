@@ -58,6 +58,9 @@ public:
 	 */
 	const float MergeThreshold = 200.0f;
 
+	UFUNCTION(BlueprintCallable)
+	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw=true,float Thickness=30.0f);
+
 protected:
 	bool bIntersectionsGenerated = false;
 	/**
@@ -71,8 +74,10 @@ protected:
 	 * @param TargetSpline 需要更新数据的样条
 	 * @param SampleDistance SplineToPolyLine细分采样数据
 	 */
-	void UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance = 250);
-
+	void UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance = 50.0f);
+	//这个值50分段大概在1000cm
+	float PolyLineSampleDistance=50.0f;
+	
 	/**
 	 * 根据SplineSegmentsInfo数据调用Get2DIntersection计算样条交点，使用四叉树和备忘录剪枝。
 	 * 后续可能会放在多线程做，因此保留返回值形式

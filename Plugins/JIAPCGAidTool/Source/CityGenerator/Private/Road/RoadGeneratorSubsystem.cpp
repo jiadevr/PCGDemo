@@ -16,6 +16,8 @@
 #include "Road/RoadMeshGenerator.h"
 #include "Road/RoadSegmentStruct.h"
 
+/*static TAutoConsoleVariable<float> PolyLineSubdivisionDis(
+	TEXT("SplineToPolySampleDis"), 50.0f,TEXT("Sample Distance Convert Spline To PolyLine"), ECVF_Default);*/
 
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -127,6 +129,31 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 	bIntersectionsGenerated = true;
 }
 
+void URoadGeneratorSubsystem::VisualizeSegmentByDebugline(bool bUpdateBeforeDraw, float Thickness)
+{
+	if (bUpdateBeforeDraw)
+	{
+		InitialRoadSplines();
+	}
+	if (SplineSegmentsInfo.IsEmpty())
+	{
+		return;
+	}
+	FlushPersistentDebugLines(UEditorComponentUtilities::GetEditorContext());
+	for (const auto& SegmentOfSingleSpline : SplineSegmentsInfo)
+	{
+		if (!SegmentOfSingleSpline.Key.IsValid()) { continue; }
+		USplineComponent* OwnerSpline = SegmentOfSingleSpline.Key.Pin().Get();
+		TArray<FSplinePolyLineSegment> Segments = SegmentOfSingleSpline.Value;
+		for (const auto& Segment : Segments)
+		{
+			DrawDebugLine(OwnerSpline->GetWorld(), Segment.StartTransform.GetLocation(),
+			              Segment.EndTransform.GetLocation(),
+			              FColor::Red, true, -1, 0, Thickness);
+		}
+	}
+}
+
 bool URoadGeneratorSubsystem::InitialRoadSplines()
 {
 	UCityGeneratorSubSystem* DataSubsystem = GEditor->GetEditorSubsystem<UCityGeneratorSubSystem>();
@@ -145,7 +172,9 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 	for (TWeakObjectPtr<USplineComponent> SplineComponent : RoadSplines)
 	{
 		USplineComponent* PinnedSplineComp = SplineComponent.Pin().Get();
-		UpdateSplineSegments(PinnedSplineComp);
+		//CVar细分预览
+		//PolyLineSubdivisionDis.GetValueOnGameThread()
+		UpdateSplineSegments(PinnedSplineComp, PolyLineSampleDistance);
 	}
 	return true;
 }

@@ -32,6 +32,7 @@ public:
 	static TObjectPtr<UActorComponent> AddComponentInEditor(AActor* TargetActor,
 	                                                        TSubclassOf<UActorComponent> TargetComponentClass);
 
-protected:
 	static TObjectPtr<UWorld> GetEditorContext();
+protected:
+	
 };
