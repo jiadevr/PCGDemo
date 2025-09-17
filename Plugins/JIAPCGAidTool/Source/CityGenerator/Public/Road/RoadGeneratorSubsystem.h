@@ -59,7 +59,7 @@ public:
 	const float MergeThreshold = 200.0f;
 
 	UFUNCTION(BlueprintCallable)
-	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw=true,float Thickness=30.0f);
+	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = true, float Thickness = 30.0f);
 
 protected:
 	bool bIntersectionsGenerated = false;
@@ -69,6 +69,9 @@ protected:
 	*/
 	UFUNCTION(BlueprintCallable)
 	bool InitialRoadSplines();
+
+	TSet<TWeakObjectPtr<USplineComponent>> RoadSplines;
+
 	/**
 	 * 更新单根样条的分段数据，**后续可能会对LinearType控制点进行进一步优化**
 	 * @param TargetSpline 需要更新数据的样条
@@ -152,6 +155,7 @@ public:
 	                         float EndShrink = 0.0);
 
 protected:
+	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);
 	/**
 	 * 道路枚举名称-道路构建信息表，在本类的Init中初始化
 	 */

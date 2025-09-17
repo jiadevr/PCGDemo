@@ -45,13 +45,13 @@ public:
 	/**
 	 * 当前PolyLine的SegmentIndex
 	 */
-	int32 SegmentIndex = 0;
+	uint32 SegmentIndex = 0;
 
 	/**
 	 * 所在Spline被切割出的Segment总数
 	 * 这个值是为了排除ClosedLoop最后一点和第一点连接的情况，这边是为了多线程可以不访问Spline对象额外记录的
 	 */
-	int32 LastSegmentIndex = 0;
+	uint32 LastSegmentIndex = 0;
 
 	/**
 	 * Segment起点，世界空间位置
@@ -81,7 +81,7 @@ protected:
 };
 
 /**
- * 记录Spline的交点信息
+ * 记录Spline的交点信息，这个结构体描述在交点处的所有Spline信息
  */
 USTRUCT(BlueprintType)
 struct FSplineIntersection
@@ -94,7 +94,7 @@ public:
 	}
 
 	FSplineIntersection(const TArray<TWeakObjectPtr<USplineComponent>>& InIntersectedSplines,
-	                    const TArray<int32>& InIntersectedSegmentIndex,
+	                    const TArray<uint32>& InIntersectedSegmentIndex,
 	                    const FVector& InIntersectionPoint): IntersectedSplines(
 		                                                         InIntersectedSplines),
 	                                                         IntersectedSegmentIndex(InIntersectedSegmentIndex),
@@ -114,9 +114,10 @@ public:
 	TArray<TWeakObjectPtr<USplineComponent>> IntersectedSplines;
 	/**
 	 * 样条线相交处的SegmentIndex
+	 * @TODO:这个值后边没用上
 	 */
-	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
-	TArray<int32> IntersectedSegmentIndex;
+	//UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	TArray<uint32> IntersectedSegmentIndex;
 	/**
 	 * 交点位置
 	 */
@@ -125,7 +126,7 @@ public:
 };
 
 /**
- * 交点处提取出的Segments信息
+ * 交点处提取出的Segments信息，这结构体描述一个汇集于交叉点的Spline片段
  */
 USTRUCT(BlueprintType)
 struct FIntersectionSegment

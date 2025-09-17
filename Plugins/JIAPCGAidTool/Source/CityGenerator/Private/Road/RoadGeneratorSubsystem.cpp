@@ -162,7 +162,7 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error::Find Null UCityGeneratorSubSystem");
 		return false;
 	}
-	TSet<TWeakObjectPtr<USplineComponent>> RoadSplines = DataSubsystem->GetSplines();
+	RoadSplines = DataSubsystem->GetSplines();
 	if (RoadSplines.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error::Find Null Spline");
@@ -280,7 +280,9 @@ TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 			//排除相连的同一样条的Segment
 			if (AllSegments[i].OwnerSpline == OverlappedSegment.OwnerSpline)
 			{
-				const int32 IndexGap = FMath::Abs(AllSegments[i].SegmentIndex - OverlappedSegment.SegmentIndex);
+				const uint32 IndexGap = AllSegments[i].SegmentIndex > OverlappedSegment.SegmentIndex
+					                        ? AllSegments[i].SegmentIndex - OverlappedSegment.SegmentIndex
+					                        : OverlappedSegment.SegmentIndex - AllSegments[i].SegmentIndex;
 				if (IndexGap <= 1 || IndexGap == AllSegments[i].LastSegmentIndex)
 				{
 					continue;
@@ -338,7 +340,7 @@ TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 				TArray<TWeakObjectPtr<USplineComponent>> IntersectedSplines{
 					AllSegments[i].OwnerSpline, OverlappedSegment.OwnerSpline
 				};
-				TArray<int32> IntersectedSegmentIndex{AllSegments[i].SegmentIndex, OverlappedSegment.SegmentIndex};
+				TArray<uint32> IntersectedSegmentIndex{AllSegments[i].SegmentIndex, OverlappedSegment.SegmentIndex};
 				FSplineIntersection
 					NewIntersection(IntersectedSplines, IntersectedSegmentIndex, FlattedIntersectionLoc);
 				//AddSplineToNewIntersectionData
@@ -460,7 +462,54 @@ void URoadGeneratorSubsystem::GenerateRoads()
 	}
 	//需要把完整、连续的Spline提取出来
 	//使用四叉树提取可能存在十字路口的格子
-	for (auto AllSegmentOfSpline : SplineSegmentsInfo)
+	for (const auto& SingleSpline : RoadSplines)
+	{
+		if (!SingleSpline.IsValid())
+		{
+			continue;
+		}
+		//找到所有Segment，然后从其中移除被交叉路口占用的
+		TArray<FSplinePolyLineSegment> AllSegmentOnSpline;
+		TMap<uint32, FSplinePolyLineSegment> AllSegmentsIndex;
+		if (SplineSegmentsInfo.Contains(SingleSpline))
+		{
+			AllSegmentOnSpline = SplineSegmentsInfo[SingleSpline];
+			AllSegmentsIndex.Reserve(AllSegmentOnSpline.Num());
+			for (const auto& Segment : AllSegmentOnSpline)
+			{
+				AllSegmentsIndex.Emplace(Segment.GetGlobalIndex(), Segment);
+			}
+		}
+		//取交叉路口占用的
+		TArray<int32> OccupiedSegmentsIndex;
+		if (IntersectionCompOnSpline.Contains(SingleSpline))
+		{
+			TSet<TWeakObjectPtr<UIntersectionMeshGenerator>> IntersectionGensOnSpline =
+				IntersectionCompOnSpline[SingleSpline];
+			for (const TWeakObjectPtr<UIntersectionMeshGenerator>& MeshGenerator : IntersectionGensOnSpline)
+			{
+				if (!MeshGenerator.IsValid()) { continue; }
+				UIntersectionMeshGenerator* MeshGeneratorPtr = MeshGenerator.Pin().Get();
+				TArray<FSplinePolyLineSegment> PotentialIntersections;
+				SplineQuadTree.GetElements(MeshGeneratorPtr->GetOccupiedBox(), PotentialIntersections);
+				for (const FSplinePolyLineSegment& PolyLineSegment : PotentialIntersections)
+				{
+					if (SingleSpline == PolyLineSegment.OwnerSpline)
+					{
+						OccupiedSegmentsIndex.Emplace(PolyLineSegment.SegmentIndex);
+					}
+				}
+			}
+		}
+
+		//去除被占用的
+		if (!OccupiedSegmentsIndex.IsEmpty())
+		{
+			TArray<TArray<int32>> ValidSubString;
+		}
+	}
+
+	/*for (auto AllSegmentOfSpline : SplineSegmentsInfo)
 	{
 		TWeakObjectPtr<USplineComponent> SplineRef = AllSegmentOfSpline.Key;
 		if (IntersectionCompOnSpline.Contains(SplineRef))
@@ -482,10 +531,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				OccupiedSegments.Emplace(Segment);
 			}
 		}
-		else
-		{
-		}
-	}
+	}*/
 }
 
 void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
@@ -699,6 +745,71 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	}
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
+}
+TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex,
+                                                                         TArray<uint32>& BreakPoints)
+{
+	TArray<TArray<uint32>> Results;
+	if (BreakPoints.IsEmpty())
+	{
+		Results.Emplace(AllSegmentIndex);
+		return Results;
+	}
+	//连续数组问题使用滑动窗口处理，但因为不需要长度数据，可以直接用单指针模拟窗口
+	TArray<uint32> IndexSeries;
+	//int32 LeftIndex = 0;
+	int32 RightIndex = 0;
+	BreakPoints.Sort();
+	int32 BreakpointIndex = 0;
+	while (RightIndex < AllSegmentIndex.Num())
+	{
+		//没遇到BreakPionts中的值是扩张
+		if (AllSegmentIndex[RightIndex] != BreakPoints[BreakpointIndex])
+		{
+			IndexSeries.Emplace(AllSegmentIndex[RightIndex]);
+			RightIndex++;
+		}
+		//遇到BreakPoints时更新结果并收缩
+		else
+		{
+			if (IndexSeries.Num() > 0)
+			{
+				Results.Emplace(IndexSeries);
+			}
+			IndexSeries.Reset();
+			//这里使用两个数组单调且元素不重复特性
+			while (RightIndex < AllSegmentIndex.Num() &&
+				BreakpointIndex < BreakPoints.Num() && AllSegmentIndex[RightIndex] == BreakPoints[BreakpointIndex])
+			{
+				BreakpointIndex++;
+				RightIndex++;
+			}
+			//两个都走到头了
+			if (BreakpointIndex == BreakPoints.Num() && RightIndex == AllSegmentIndex.Num())
+			{
+				break;
+			}
+			// BreakPoint是Allsegment子集，不存在BreakpointIndex没到头但是RightIndex到头的情况
+			if (BreakpointIndex == BreakPoints.Num() && RightIndex < AllSegmentIndex.Num())
+			{
+				RightIndex++;
+				//没有发现截取子数组的函数，后续可以考虑FMemory::Memcpy()
+				for (int i = RightIndex; i < AllSegmentIndex.Num(); ++i)
+				{
+					IndexSeries.Emplace(AllSegmentIndex[i]);
+				}
+				break;
+			}
+			//此时回归正常情况两者指向数字不同，收缩窗口
+			//Left=Right
+		}
+	}
+	//把最后一组数字放进去
+	if (!IndexSeries.IsEmpty())
+	{
+		Results.Emplace(IndexSeries);
+	}
+	return Results;
 }
 
 TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControlPoint(
