@@ -8,6 +8,7 @@
 #include "Road/RoadSegmentStruct.h"
 
 #include "RoadGeneratorSubsystem.generated.h"
+class URoadMeshGenerator;
 class UIntersectionMeshGenerator;
 class USplineComponent;
 
@@ -134,6 +135,9 @@ public:
 	 * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
 	 * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
 	 */
+
+	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
+	
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
 	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
@@ -156,10 +160,10 @@ public:
 	                         float EndShrink = 0.0);
 	
 	/**
-	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素
+	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素，两数组要求元素唯一
 	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries
-	 * @param AllSegmentIndex 连续有序的SegmentIndex
-	 * @param BreakPoints 断点数组，可无需
+	 * @param AllSegmentIndex 连续有序的SegmentIndex，要求元素唯一
+	 * @param BreakPoints 断点数组，可无序，要求元素唯一
 	 * @return 切分获得的子数组（不含断点元素）
 	 */
 	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);

@@ -6,14 +6,11 @@ IMPLEMENT_COMPLEX_AUTOMATION_TEST(FRoadGeneratorSubsystemTest,
                                   EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 
-bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem)
+bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem, TArray<int32>& BreakPoints, int32 StartIndex,
+                                  int32 EndIndex)
 {
 	//输入给定端点数组、起点终点，输出数组
-	//数组个数不好确定，但 每一组数组内容应当连续递增&&每组不包含端点元素&&输出数组和断点元素总数和原输入数组相同
-	TArray<int32> BreakPoints{4, 8, 10};
-	int32 StartIndex = 2;
-	int32 EndIndex = 10;
-
+	//数组个数不好确定，但 每一组数组内容应当连续递增&&每组不包含端点元素&&输出数组和**有效**断点元素总数和原输入数组相同
 	TArray<uint32> ContinuousIndexSeries;
 	FString DebugStr = "Original Array:";
 	uint32 EndIndexInU32 = static_cast<uint32>(EndIndex);
@@ -27,6 +24,30 @@ bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem)
 	TArray<uint32> BreakpointsInU32;
 	BreakpointsInU32.SetNumUninitialized(BreakPoints.Num());
 	FMemory::Memcpy(BreakpointsInU32.GetData(), BreakPoints.GetData(), BreakPoints.Num() * sizeof(uint32));
+	int32 BreakpointIndex = 0;
+	int32 ValidBreakPointsNum = BreakPoints.Num();
+	if (!BreakPoints.IsEmpty())
+	{
+		//对齐数据
+		while (BreakpointsInU32[BreakpointIndex] < ContinuousIndexSeries[0] && ValidBreakPointsNum > 0)
+		{
+			BreakpointIndex++;
+			ValidBreakPointsNum--;
+		}
+		int32 BreakpointIndexLast = BreakPoints.Num() - 1;
+		while (BreakpointsInU32[BreakpointIndexLast] > ContinuousIndexSeries.Last(0) && ValidBreakPointsNum > 0)
+		{
+			BreakpointIndexLast--;
+			ValidBreakPointsNum--;
+		}
+		for (int i = 1; i < BreakpointsInU32.Num(); ++i)
+		{
+			if (BreakpointsInU32[i - 1] == BreakpointsInU32[i])
+			{
+				ValidBreakPointsNum--;
+			}
+		}
+	}
 	DebugStr = "BreakPoints Array:";
 	for (const uint32& Breakpoint : BreakpointsInU32)
 	{
@@ -62,7 +83,7 @@ bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem)
 		UE_LOG(LogTemp, Display, TEXT("%s"), *DebugStr);
 		DebugStr.Reset();
 	}
-	if (ResultsCounter + BreakpointsInU32.Num() != EndIndex - StartIndex + 1)
+	if (ResultsCounter + ValidBreakPointsNum != EndIndex - StartIndex + 1)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Lose Elem"));
 		return false;
@@ -89,7 +110,44 @@ bool FRoadGeneratorSubsystemTest::RunTest(const FString& Parameters)
 	//TestFor GetContinuousIndexSeries()
 
 	{
-		bPassAllTest &= TestGetContinuousIndexSeries(TestingTarget);
+		//测试用例
+		struct FGetContinuousIndexTestCase
+		{
+			explicit FGetContinuousIndexTestCase(const TArray<int32>& InBreakPoints, int32 InStartIndex,
+			                                     int32 InEndIndex):
+				Breakpoints(InBreakPoints), StartIndex(InStartIndex), EndIndex(InEndIndex)
+			{
+			}
+
+			TArray<int32> Breakpoints{};
+			int32 StartIndex = 0;
+			int32 EndIndex = 10;
+		};
+
+		TArray<FGetContinuousIndexTestCase> ContinuousIndexSeriesTestCase;
+		//中间切断C0
+		ContinuousIndexSeriesTestCase.Emplace(FGetContinuousIndexTestCase{{13, 14, 15}, 0, 21});
+		//部分不包含(前后)C1C2
+		ContinuousIndexSeriesTestCase.Emplace(FGetContinuousIndexTestCase{{3, 4, 5, 6}, 5, 26});
+		//部分不包含(前后)C1C2
+		ContinuousIndexSeriesTestCase.Emplace(FGetContinuousIndexTestCase{{18, 19, 20, 21}, 5, 26});
+		//分段切断C3
+		ContinuousIndexSeriesTestCase.Emplace(FGetContinuousIndexTestCase{{1, 2, 3, 10, 11, 17}, 0, 21});
+		//全部切断C4
+		ContinuousIndexSeriesTestCase.Emplace(FGetContinuousIndexTestCase{{0, 1, 2}, 0, 2});
+		//不切C5
+		ContinuousIndexSeriesTestCase.Emplace(FGetContinuousIndexTestCase{{}, 0, 5});
+		//函数要求不包含重复值，无重复断点测试用例
+		for (int i = 0; i < ContinuousIndexSeriesTestCase.Num(); ++i)
+		{
+			bool bAC = TestGetContinuousIndexSeries(TestingTarget, ContinuousIndexSeriesTestCase[i].Breakpoints, ContinuousIndexSeriesTestCase[i].StartIndex,
+			                                        ContinuousIndexSeriesTestCase[i].EndIndex);
+			bPassAllTest &= bAC;
+			if (!bAC)
+			{
+				AddError(FString::Printf(TEXT("Fail To Pass Case %d"), i));
+			}
+		}
 	}
 
 	return bPassAllTest;

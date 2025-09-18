@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MeshGeneratorInterface.h"
+#include "RoadSegmentStruct.h"
 #include "Components/ActorComponent.h"
 #include "RoadMeshGenerator.generated.h"
 
@@ -11,7 +12,7 @@
 class USplineComponent;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class CITYGENERATOR_API URoadMeshGenerator : public UActorComponent,public IMeshGeneratorInterface
+class CITYGENERATOR_API URoadMeshGenerator : public UActorComponent, public IMeshGeneratorInterface
 {
 	GENERATED_BODY()
 
@@ -19,17 +20,27 @@ public:
 	// Sets default values for this component's properties
 	URoadMeshGenerator();
 
-	UPROPERTY(BlueprintReadWrite,EditAnywhere)
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	int32 DebugIndex;
-	UFUNCTION(CallInEditor,BlueprintCallable)
+	UFUNCTION(CallInEditor, BlueprintCallable)
 	void DrawDebugElemOnSweepPoint();
 
-	UPROPERTY(BlueprintReadOnly,VisibleInstanceOnly)
-	TArray<FTransform> SweepPointsTrans;
+	void SetRoadPathTransform(const TArray<FTransform>& InTransforms);
 
-	UPROPERTY(BlueprintReadOnly,VisibleInstanceOnly)
-	TWeakObjectPtr<USplineComponent> ReferenceSpline;
+	void SetReferenceSpline(TWeakObjectPtr<USplineComponent> InReferenceSpline);
 
+	void SetRoadType(ELaneType InRoadType);
+	
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
+
+protected:
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	TArray<FTransform> SweepPointsTrans;
+
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	TWeakObjectPtr<USplineComponent> ReferenceSpline;
+
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	FLaneMeshInfo RoadInfo;
 };
