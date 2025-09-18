@@ -440,6 +440,7 @@ TArray<FSplinePolyLineSegment> URoadGeneratorSubsystem::GetInteractionOccupiedSe
 
 void URoadGeneratorSubsystem::GenerateRoads()
 {
+	uint32 RoadCounter = 0;
 	//如果Intersection已经生成则按照之前的信息
 	if (!bIntersectionsGenerated && bNeedRefreshSegmentData)
 	{
@@ -470,18 +471,23 @@ void URoadGeneratorSubsystem::GenerateRoads()
 		}
 		//找到所有Segment，然后从其中移除被交叉路口占用的
 		TArray<FSplinePolyLineSegment> AllSegmentOnSpline;
-		TMap<uint32, FSplinePolyLineSegment> AllSegmentsIndex;
+		TMap<uint32, FSplinePolyLineSegment> IndexToAllSegments;
+		//在这里获得的值是有序的
+		TArray<uint32> AllSegmentsIndex;
+		IndexToAllSegments.Reserve(AllSegmentOnSpline.Num());
+		AllSegmentsIndex.Reserve(AllSegmentOnSpline.Num());
 		if (SplineSegmentsInfo.Contains(SingleSpline))
 		{
 			AllSegmentOnSpline = SplineSegmentsInfo[SingleSpline];
-			AllSegmentsIndex.Reserve(AllSegmentOnSpline.Num());
+			IndexToAllSegments.Reserve(AllSegmentOnSpline.Num());
 			for (const auto& Segment : AllSegmentOnSpline)
 			{
-				AllSegmentsIndex.Emplace(Segment.GetGlobalIndex(), Segment);
+				IndexToAllSegments.Emplace(Segment.GetGlobalIndex(), Segment);
+				AllSegmentsIndex.Emplace(Segment.GetGlobalIndex());
 			}
 		}
 		//取交叉路口占用的
-		TArray<int32> OccupiedSegmentsIndex;
+		TArray<uint32> OccupiedSegmentsIndex;
 		if (IntersectionCompOnSpline.Contains(SingleSpline))
 		{
 			TSet<TWeakObjectPtr<UIntersectionMeshGenerator>> IntersectionGensOnSpline =
@@ -501,37 +507,47 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				}
 			}
 		}
-
-		//去除被占用的
+		TArray<TArray<uint32>> ContinuousSegmentsGroups;
+		//去除被占用的，获取连续的Segments数据
 		if (!OccupiedSegmentsIndex.IsEmpty())
 		{
-			TArray<TArray<int32>> ValidSubString;
+			ContinuousSegmentsGroups = GetContinuousIndexSeries(AllSegmentsIndex, OccupiedSegmentsIndex);
+		}
+		else
+		{
+			ContinuousSegmentsGroups.Emplace(AllSegmentsIndex);
+		}
+		//创建Actor负载信息
+		for (auto ContinuousSegments : ContinuousSegmentsGroups)
+		{
+			TArray<FTransform> RoadSegmentTransforms;
+			FTransform StartTransform = IndexToAllSegments[ContinuousSegments[0]].StartTransform;
+			RoadSegmentTransforms.Emplace(StartTransform);
+			for (int32 j = 0; j < ContinuousSegments.Num(); ++j)
+			{
+				RoadSegmentTransforms.Emplace(IndexToAllSegments[ContinuousSegments[j]].EndTransform);
+			}
+			//把最后一段的Segment放进去
+
+			FString ActorLabel = FString::Printf(TEXT("RoadActor%d"), RoadCounter);
+			AActor* RoadActor = UEditorComponentUtilities::SpawnEmptyActor(ActorLabel, StartTransform);
+			ensureAlways(nullptr!=RoadActor);
+			UActorComponent* MeshCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+				RoadActor, UDynamicMeshComponent::StaticClass());
+			UDynamicMeshComponent* MeshComp = Cast<UDynamicMeshComponent>(MeshCompTemp);
+			UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+				RoadActor, URoadMeshGenerator::StaticClass());
+			URoadMeshGenerator* GeneratorComp = Cast<URoadMeshGenerator>(GeneratorCompTemp);
+			GeneratorComp->SetMeshComponent(MeshComp);
+			GeneratorComp->SetReferenceSpline(SingleSpline);
+			GeneratorComp->SetRoadPathTransform(RoadSegmentTransforms);
+			RoadMeshGenerators.Emplace(GeneratorComp);
 		}
 	}
-
-	/*for (auto AllSegmentOfSpline : SplineSegmentsInfo)
+	for (const auto& RoadMeshGenerator : RoadMeshGenerators)
 	{
-		TWeakObjectPtr<USplineComponent> SplineRef = AllSegmentOfSpline.Key;
-		if (IntersectionCompOnSpline.Contains(SplineRef))
-		{
-			TSet<TWeakObjectPtr<UIntersectionMeshGenerator>> GeneratorsOnSpline = IntersectionCompOnSpline[SplineRef];
-			TArray<FSplinePolyLineSegment> PotentialOccupiedSegments;
-			for (const auto& Generator : GeneratorsOnSpline)
-			{
-				PotentialOccupiedSegments.Append(GetInteractionOccupiedSegments(Generator));
-			}
-			TArray<FSplinePolyLineSegment> OccupiedSegments;
-			//@TODO：这可能会比较耗，还有一种做法是遍历Intersection，然后把Spline-Segment中的值去掉
-			for (const FSplinePolyLineSegment& Segment : PotentialOccupiedSegments)
-			{
-				if (SplineRef != Segment.OwnerSpline)
-				{
-					continue;
-				}
-				OccupiedSegments.Emplace(Segment);
-			}
-		}
-	}*/
+		RoadMeshGenerator->GenerateMesh();
+	}
 }
 
 void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
@@ -569,8 +585,8 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* Target
 	TArray<FTransform> SweepPath;
 	ResampleSamplePoint(TargetSpline, SweepPath, RoadPresetMap[LaneTypeEnum].SampleLength,
 	                    0.0f, 0.0f);
-	RoadDataComp->SweepPointsTrans = SweepPath;
-	RoadDataComp->ReferenceSpline = TargetSpline;
+	RoadDataComp->SetRoadPathTransform(SweepPath) ;
+	RoadDataComp->SetReferenceSpline(TargetSpline) ;
 	TArray<FVector2D> SweepShape = RoadPresetMap[LaneTypeEnum].CrossSectionCoord;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(DynamicMesh, GeometryScriptOptions,
 	                                                                  SweepMeshTrans, SweepShape, SweepPath);
@@ -800,10 +816,6 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 				                reinterpret_cast<const uint8*>(AllSegmentIndex.GetData()) + RightIndex * sizeof(int32),
 				                (AllSegmentIndex.Num() - RightIndex) * sizeof(int32)
 				);
-				/*for (int i = RightIndex; i < AllSegmentIndex.Num(); ++i)
-				{
-					IndexSeries.Emplace(AllSegmentIndex[i]);
-				}*/
 				break;
 			}
 			//此时回归正常情况两者指向数字不同，收缩窗口

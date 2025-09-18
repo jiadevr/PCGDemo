@@ -3,6 +3,8 @@
 
 #include "Road/RoadMeshGenerator.h"
 #include "Components/DynamicMeshComponent.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 
 // Sets default values for this component's properties
@@ -42,8 +44,53 @@ void URoadMeshGenerator::DrawDebugElemOnSweepPoint()
 	               FColor::Purple, false, 10.0f);
 }
 
+void URoadMeshGenerator::SetRoadPathTransform(const TArray<FTransform>& InTransforms)
+{
+	SweepPointsTrans = InTransforms;
+}
+
+void URoadMeshGenerator::SetReferenceSpline(TWeakObjectPtr<USplineComponent> InReferenceSpline)
+{
+	ReferenceSpline = InReferenceSpline;
+}
+
+void URoadMeshGenerator::SetRoadType(ELaneType InRoadType)
+{
+	switch (InRoadType)
+	{
+	case ELaneType::COLLECTORROADS:
+		RoadInfo = FLaneMeshInfo(500.0f);
+		break;
+	case ELaneType::ARTERIALROADS:
+		RoadInfo = FLaneMeshInfo(1000.0f);
+		break;
+	case ELaneType::EXPRESSWAYS:
+		RoadInfo = FLaneMeshInfo(2000.0f);
+		break;
+	default:
+		RoadInfo = FLaneMeshInfo(500.0f);
+		break;
+	}
+}
+
 bool URoadMeshGenerator::GenerateMesh()
 {
+	if (SweepPointsTrans.IsEmpty())
+	{
+		return false;
+	}
+	for (int32 i = 1; i < SweepPointsTrans.Num(); ++i)
+	{
+		FVector CenterLocation = (SweepPointsTrans[i - 1].GetLocation() + SweepPointsTrans[i].GetLocation()) / 2.0;
+		double BoxHalfLength = FVector::Dist(SweepPointsTrans[i - 1].GetLocation(), SweepPointsTrans[i].GetLocation()) /
+			2.0;
+		FVector BoxExtent(BoxHalfLength, 250.0, 10);
+		FBox DebugBox(-BoxExtent, BoxExtent);
+		FRotator BoxRotator = UKismetMathLibrary::MakeRotFromX(
+			(SweepPointsTrans[i].GetLocation() - SweepPointsTrans[i - 1].GetLocation()).GetSafeNormal());
+		FTransform DebugBoxTrans(BoxRotator, CenterLocation);
+		DrawDebugSolidBox(this->GetWorld(), DebugBox, FColor::Cyan, DebugBoxTrans, true);
+	}
 	return false;
 }
 

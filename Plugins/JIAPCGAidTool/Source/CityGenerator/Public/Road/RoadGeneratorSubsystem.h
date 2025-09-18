@@ -8,6 +8,7 @@
 #include "Road/RoadSegmentStruct.h"
 
 #include "RoadGeneratorSubsystem.generated.h"
+class URoadMeshGenerator;
 class UIntersectionMeshGenerator;
 class USplineComponent;
 
@@ -134,6 +135,9 @@ public:
 	 * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
 	 * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
 	 */
+
+	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
+	
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
 	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,

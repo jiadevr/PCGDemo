@@ -8,7 +8,7 @@ class USplineComponent;
 
 
 /**
- * 记录Spline切分出的多段线信息
+ * 记录Spline切分出的多段线信息,用于构建四叉树
  */
 USTRUCT(BlueprintType)
 struct FSplinePolyLineSegment
@@ -20,7 +20,7 @@ struct FSplinePolyLineSegment
 	}
 
 public:
-	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, int32 InSegmentIndex, int32 InLastSegmentIndex,
+	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, uint32 InSegmentIndex, uint32 InLastSegmentIndex,
 	                       const FTransform& InStartTransform,
 	                       const FTransform& InEndTransform): OwnerSpline(InSplineRef),
 	                                                          SegmentIndex(InSegmentIndex),
@@ -183,7 +183,7 @@ enum class ELaneType:uint8
 };
 
 //道路数据结构体
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FLaneMeshInfo
 {
 	GENERATED_BODY()
@@ -194,7 +194,7 @@ public:
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
 	}
 
-	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight, const float Length = 1000.0f)
+	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight=30.0f, const float Length = 1000.0f)
 	{
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
 		SampleLength = Length;
