@@ -1,0 +1,97 @@
+﻿#include "Misc/AutomationTest.h"
+#include "Road/RoadGeneratorSubsystem.h"
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_COMPLEX_AUTOMATION_TEST(FRoadGeneratorSubsystemTest,
+                                  "PCGDemo.JIAPCGAidTool.Source.CityGenerator.UnitTestClass.FRoadGeneratorSubsystemTest",
+                                  EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+
+bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem)
+{
+	//输入给定端点数组、起点终点，输出数组
+	//数组个数不好确定，但 每一组数组内容应当连续递增&&每组不包含端点元素&&输出数组和断点元素总数和原输入数组相同
+	TArray<int32> BreakPoints{4, 8, 10};
+	int32 StartIndex = 2;
+	int32 EndIndex = 10;
+
+	TArray<uint32> ContinuousIndexSeries;
+	FString DebugStr = "Original Array:";
+	uint32 EndIndexInU32 = static_cast<uint32>(EndIndex);
+	for (uint32 i = StartIndex; i <= EndIndexInU32; ++i)
+	{
+		ContinuousIndexSeries.Emplace(i);
+		DebugStr += FString::Printf(TEXT("%d,"), i);
+	}
+	UE_LOG(LogTemp, Display, TEXT("%s"), *DebugStr);
+	DebugStr.Reset();
+	TArray<uint32> BreakpointsInU32;
+	BreakpointsInU32.SetNumUninitialized(BreakPoints.Num());
+	FMemory::Memcpy(BreakpointsInU32.GetData(), BreakPoints.GetData(), BreakPoints.Num() * sizeof(uint32));
+	DebugStr = "BreakPoints Array:";
+	for (const uint32& Breakpoint : BreakpointsInU32)
+	{
+		DebugStr += FString::Printf(TEXT("%d,"), Breakpoint);
+	}
+	UE_LOG(LogTemp, Display, TEXT("%s"), *DebugStr);
+	DebugStr.Reset();
+
+	TArray<TArray<uint32>> Results = Subsystem->GetContinuousIndexSeries(
+		ContinuousIndexSeries, BreakpointsInU32);
+	int ResultsCounter = 0;
+	for (int i = 0; i < Results.Num(); ++i)
+	{
+		DebugStr = FString::Printf(TEXT("Result %d Array:"), i);
+		for (int j = 0; j < Results[i].Num(); ++j)
+		{
+			DebugStr += FString::Printf(TEXT("%d,"), Results[i][j]);
+			if (j > 0)
+			{
+				if (Results[i][j] - Results[i][j - 1] != 1)
+				{
+					UE_LOG(LogTemp, Error, TEXT("Not Continuous"));
+					return false;
+				}
+			}
+			if (BreakpointsInU32.Contains(Results[i][j]))
+			{
+				UE_LOG(LogTemp, Error, TEXT("Results Contains BreakPoints Elem"));
+				return false;
+			}
+			ResultsCounter++;
+		}
+		UE_LOG(LogTemp, Display, TEXT("%s"), *DebugStr);
+		DebugStr.Reset();
+	}
+	if (ResultsCounter + BreakpointsInU32.Num() != EndIndex - StartIndex + 1)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Lose Elem"));
+		return false;
+	}
+	return true;
+}
+
+
+void FRoadGeneratorSubsystemTest::GetTests(TArray<FString>& OutBeautifiedNames, TArray<FString>& OutTestCommands) const
+{
+	OutBeautifiedNames.Add(TEXT("FRoadGeneratorSubsystemTest_TestName"));
+	OutTestCommands.Add(TEXT("FRoadGeneratorSubsystemTest_TestName"));
+}
+
+bool FRoadGeneratorSubsystemTest::RunTest(const FString& Parameters)
+{
+	URoadGeneratorSubsystem* TestingTarget = GEditor->GetEditorSubsystem<URoadGeneratorSubsystem>();
+	bool bPassAllTest = true;
+	if (!TestingTarget)
+	{
+		AddError("Get URoadGeneratorSubsystem Failed");
+		return false;
+	}
+	//TestFor GetContinuousIndexSeries()
+
+	{
+		bPassAllTest &= TestGetContinuousIndexSeries(TestingTarget);
+	}
+
+	return bPassAllTest;
+}
+#endif

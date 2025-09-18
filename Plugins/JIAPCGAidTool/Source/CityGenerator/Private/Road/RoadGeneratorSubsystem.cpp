@@ -746,6 +746,7 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
 }
+
 TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex,
                                                                          TArray<uint32>& BreakPoints)
 {
@@ -793,11 +794,16 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 			if (BreakpointIndex == BreakPoints.Num() && RightIndex < AllSegmentIndex.Num())
 			{
 				RightIndex++;
-				//没有发现截取子数组的函数，后续可以考虑FMemory::Memcpy()
-				for (int i = RightIndex; i < AllSegmentIndex.Num(); ++i)
+				//没有发现截取子数组的函数，使用FMemory::Memcpy()
+				IndexSeries.SetNumUninitialized(AllSegmentIndex.Num() - RightIndex);
+				FMemory::Memcpy(IndexSeries.GetData(),
+				                reinterpret_cast<const uint8*>(AllSegmentIndex.GetData()) + RightIndex * sizeof(int32),
+				                (AllSegmentIndex.Num() - RightIndex) * sizeof(int32)
+				);
+				/*for (int i = RightIndex; i < AllSegmentIndex.Num(); ++i)
 				{
 					IndexSeries.Emplace(AllSegmentIndex[i]);
-				}
+				}*/
 				break;
 			}
 			//此时回归正常情况两者指向数字不同，收缩窗口

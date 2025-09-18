@@ -23,7 +23,6 @@ UIntersectionMeshGenerator::UIntersectionMeshGenerator()
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
-	
 }
 
 void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData)
@@ -82,6 +81,18 @@ void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* I
 		MeshComponent = TWeakObjectPtr<UDynamicMeshComponent>(InMeshComponent);
 	}
 }
+
+/*int32 UIntersectionMeshGenerator::GetOverlapSegmentOnGivenSpline(TWeakObjectPtr<USplineComponent> TargetSpline)
+{
+	for (auto SingleIntersectionData : IntersectionsData)
+	{
+		if (SingleIntersectionData.OwnerSpline == TargetSpline)
+		{
+			return -1;
+		}
+	}
+	return 0;
+}*/
 
 TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 {
@@ -223,7 +234,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			continue;
 		}
 		FVector2D EdgeIntersectionLoc = EdgeIntersections[EdgeIntersectionElem.Value];
-		
+
 		//这里拿到的是样条编号，小的排在前边，也就是说每一段都从左到右，取Start的左边界和To的右边界
 		int32 FromSegmentIndex = EdgeIntersectionElem.Key.Key;
 		FVector2D FromEdgeStartLoc = RoadEdgePoints[4 * FromSegmentIndex + 2];

@@ -16,6 +16,7 @@ class USplineComponent;
  * 1.承接CityGenerator类中用户输入的Spline信息，将其转换为PolyLineSegment并计算交点
  * 2.生成RoadActor和IntersectionActor，为其挂载的Generator传递核心Segment信息，由Generator负责结构细化和具体生成
  */
+
 UCLASS()
 class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 {
@@ -153,9 +154,16 @@ public:
 	bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
 	                         float MaxResampleDistance, float StartShrink = 0.0,
 	                         float EndShrink = 0.0);
-
-protected:
+	
+	/**
+	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素
+	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries
+	 * @param AllSegmentIndex 连续有序的SegmentIndex
+	 * @param BreakPoints 断点数组，可无需
+	 * @return 切分获得的子数组（不含断点元素）
+	 */
 	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);
+protected:
 	/**
 	 * 道路枚举名称-道路构建信息表，在本类的Init中初始化
 	 */

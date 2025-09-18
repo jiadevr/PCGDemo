@@ -41,6 +41,10 @@
 		{
 			"Name": "PCGExternalDataInterop",
 			"Enabled": true
+		},
+		{
+			"Name": "FunctionalTestingEditor",
+			"Enabled": true
 		}
 	]
 }

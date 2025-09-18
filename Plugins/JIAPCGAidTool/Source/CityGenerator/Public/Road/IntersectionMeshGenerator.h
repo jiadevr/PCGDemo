@@ -39,6 +39,9 @@ public:
 	 * @param InMeshComponent 传入Owner的UDynamicMeshComponent
 	 */
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
+
+	//这个函数有问题，看后续还要不要维护
+	//int32 GetOverlapSegmentOnGivenSpline(TWeakObjectPtr<USplineComponent> TargetSpline);
 protected:
 	/**
 	 * 核心函数，创建交点二维截面
