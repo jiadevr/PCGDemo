@@ -145,11 +145,21 @@ void URoadGeneratorSubsystem::VisualizeSegmentByDebugline(bool bUpdateBeforeDraw
 		if (!SegmentOfSingleSpline.Key.IsValid()) { continue; }
 		USplineComponent* OwnerSpline = SegmentOfSingleSpline.Key.Pin().Get();
 		TArray<FSplinePolyLineSegment> Segments = SegmentOfSingleSpline.Value;
-		for (const auto& Segment : Segments)
+		for (int32 i = 0; i < Segments.Num(); ++i)
 		{
-			DrawDebugLine(OwnerSpline->GetWorld(), Segment.StartTransform.GetLocation(),
-			              Segment.EndTransform.GetLocation(),
-			              FColor::Red, true, -1, 0, Thickness);
+			FColor DebugColor = Segments.Num() != 1 ? FColor(i * 255 / (Segments.Num() - 1)) : FColor(255, 255, 1);
+			DrawDebugSphere(OwnerSpline->GetWorld(), Segments[i].StartTransform.GetLocation(), 100.0f, 8, DebugColor,
+			                true);
+			DrawDebugSphere(OwnerSpline->GetWorld(), Segments[i].EndTransform.GetLocation(), 100.0f, 8, DebugColor,
+			                true);
+			FVector CenterLocation = (Segments[i].StartTransform.GetLocation() + Segments[i].EndTransform.GetLocation())
+				/ 2.0;
+			double BoxExtendX = FVector::Dist2D(Segments[i].StartTransform.GetLocation(),
+			                                    Segments[i].EndTransform.GetLocation()) / 2.0;
+			FVector BoxExtend(BoxExtendX, 250.0, 100.0);
+			FRotator BoxRotator = UKismetMathLibrary::MakeRotFromX((
+				Segments[i].StartTransform.GetLocation() - Segments[i].EndTransform.GetLocation()).GetSafeNormal());
+			DrawDebugBox(OwnerSpline->GetWorld(), CenterLocation, BoxExtend, BoxRotator.Quaternion(), DebugColor, true);
 		}
 	}
 }
@@ -174,42 +184,48 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 		USplineComponent* PinnedSplineComp = SplineComponent.Pin().Get();
 		//CVar细分预览
 		//PolyLineSubdivisionDis.GetValueOnGameThread()
-		UpdateSplineSegments(PinnedSplineComp, PolyLineSampleDistance);
+		UpdateSplineSegments(PinnedSplineComp);
 	}
 	return true;
 }
 
-void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance)
+void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSpline)
 {
 	if (nullptr == TargetSpline)
 	{
 		return;
 	}
-	TArray<FVector> PolyLinePoints;
-	TargetSpline->ConvertSplineToPolyLine(ESplineCoordinateSpace::World, SampleDistance * SampleDistance,
-	                                      PolyLinePoints);
-	if (PolyLinePoints.IsEmpty())
+	TArray<FTransform> ResamplePointsOnSpline;
+	const int32 OriginalSegmentCount = TargetSpline->GetNumberOfSplineSegments();
+	//const float OriginalSplineLength = TargetSpline->GetSplineLength();
+	//没构成有效样条
+	if (OriginalSegmentCount < 1)
 	{
-		ensureAlwaysMsgf(!PolyLinePoints.IsEmpty(), TEXT("Get Empty PolyPointArray"));
+		return;
+	}
+	for (int i = 0; i < OriginalSegmentCount; ++i)
+	{
+		ResamplePointsOnSpline.Append(ResampleSplineSegment(TargetSpline, i));
+	}
+	//上面输出左闭右开区间，非闭合曲线补上最后一个点
+	if (!TargetSpline->IsClosedLoop())
+	{
+		ResamplePointsOnSpline.Emplace(
+			TargetSpline->GetTransformAtSplinePoint(OriginalSegmentCount, ESplineCoordinateSpace::World));
+	}
+	if (ResamplePointsOnSpline.IsEmpty())
+	{
+		ensureAlwaysMsgf(!ResamplePointsOnSpline.IsEmpty(), TEXT("Get Empty PolyPointArray"));
 		return;
 	}
 	TArray<FSplinePolyLineSegment> Segments;
-	const int32 SegmentCount = PolyLinePoints.Num() - 1;
-	Segments.SetNum(SegmentCount);
-	FTransform PreviousTrans;
-	for (int32 i = 0; i < PolyLinePoints.Num(); i++)
+	const int32 SegmentCount = ResamplePointsOnSpline.Num() - 1;
+	Segments.Reserve(SegmentCount);
+
+	for (int32 i = 1; i < ResamplePointsOnSpline.Num(); i++)
 	{
-		float DisOfPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
-			PolyLinePoints[i], ESplineCoordinateSpace::World);
-		FTransform CurrentTrans = TargetSpline->GetTransformAtDistanceAlongSpline(
-			DisOfPoint, ESplineCoordinateSpace::World, true);
-		if (i == 0)
-		{
-			PreviousTrans = CurrentTrans;
-			continue;
-		}
-		Segments[i - 1] = FSplinePolyLineSegment(TargetSpline, i - 1, SegmentCount - 1, PreviousTrans, CurrentTrans);
-		PreviousTrans = CurrentTrans;
+		Segments.Emplace(FSplinePolyLineSegment(TargetSpline, i - 1, SegmentCount - 1, ResamplePointsOnSpline[i - 1],
+		                                        ResamplePointsOnSpline[i]));
 	}
 	SplineSegmentsInfo.Emplace(TargetSpline, Segments);
 }
@@ -542,6 +558,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			GeneratorComp->SetReferenceSpline(SingleSpline);
 			GeneratorComp->SetRoadPathTransform(RoadSegmentTransforms);
 			RoadMeshGenerators.Emplace(GeneratorComp);
+			RoadCounter++;
 		}
 	}
 	for (const auto& RoadMeshGenerator : RoadMeshGenerators)
@@ -596,25 +613,26 @@ void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* Target
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(DynamicMesh, SplitOptions, CalculateOptions);
 }
 
-float URoadGeneratorSubsystem::GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 StartPointIndex)
+float URoadGeneratorSubsystem::GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex)
 {
-	if (StartPointIndex <= 0 || StartPointIndex >= TargetSpline->GetNumberOfSplinePoints())
+	if (SegmentIndex < 0 || SegmentIndex >= TargetSpline->GetNumberOfSplineSegments())
 	{
 		return 0;
 	}
-	if (StartPointIndex == TargetSpline->GetNumberOfSplinePoints() - 1)
+	if (SegmentIndex == TargetSpline->GetNumberOfSplinePoints() - 1)
 	{
 		if (TargetSpline->IsClosedLoop())
 		{
-			return TargetSpline->GetSplineLength() - TargetSpline->GetDistanceAlongSplineAtSplinePoint(StartPointIndex);
+			return TargetSpline->GetSplineLength() - TargetSpline->
+				GetDistanceAlongSplineAtSplinePoint(SegmentIndex + 1);
 		}
 		else
 		{
 			return 0;
 		}
 	}
-	return TargetSpline->GetDistanceAlongSplineAtSplinePoint(StartPointIndex) - TargetSpline->
-		GetDistanceAlongSplineAtSplinePoint(StartPointIndex - 1);
+	return TargetSpline->GetDistanceAlongSplineAtSplinePoint(SegmentIndex + 1) - TargetSpline->
+		GetDistanceAlongSplineAtSplinePoint(SegmentIndex);
 }
 
 bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* TargetSpline,
@@ -655,7 +673,7 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 		{
 			//曲线，该函数返回闭合样条返回段
 			OutResampledTransform.Append(
-				GetSubdivisionOnSingleSegment(TargetSpline, StartShrink, EndShrink, MaxResampleDistance, true));
+				GetSubdivisionOnSingleSegment(TargetSpline, StartShrink, EndShrink, MaxResampleDistance, true, true));
 		}
 	}
 	//具有多控制点
@@ -780,13 +798,13 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 	int32 BreakpointIndex = 0;
 	int32 ValidBreakPoints = BreakPoints.Num();
 	//对齐数据
-	while (BreakPoints[BreakpointIndex] < AllSegmentIndex[0] && ValidBreakPoints > 0)
+	while (ValidBreakPoints > 0 && BreakPoints[BreakpointIndex] < AllSegmentIndex[0])
 	{
 		BreakpointIndex++;
 		ValidBreakPoints--;
 	}
 	int32 BreakpointIndexLast = BreakPoints.Num() - 1;
-	while (BreakPoints[BreakpointIndexLast] > AllSegmentIndex.Last(0) && ValidBreakPoints > 0)
+	while (ValidBreakPoints > 0 && BreakPoints[BreakpointIndexLast] > AllSegmentIndex.Last(0))
 	{
 		BreakpointIndexLast--;
 		ValidBreakPoints--;
@@ -844,6 +862,67 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 	if (!IndexSeries.IsEmpty())
 	{
 		Results.Emplace(IndexSeries);
+	}
+	return Results;
+}
+
+TArray<FTransform> URoadGeneratorSubsystem::ResampleSplineSegment(USplineComponent* TargetSpline,
+                                                                  int32 TargetSegmentIndex)
+{
+	//返回左闭右开区间
+	TArray<FTransform> Results;
+	if (nullptr == TargetSpline || TargetSegmentIndex < 0 || TargetSegmentIndex >= TargetSpline->
+		GetNumberOfSplineSegments())
+	{
+		return Results;
+	}
+	const float SegmentMaxDisThreshold = 10 * PolyLineSampleDistance;
+	const float LengthOfOriginalSegment = GetSplineSegmentLength(TargetSpline, TargetSegmentIndex);
+	Results.Reset();
+	Results.Reserve(2);
+	if (TargetSpline->GetSplinePointType(TargetSegmentIndex) == ESplinePointType::Linear)
+	{
+		//直线,往复直线完全重合，不重复生成
+		//长度小于阈值
+		if (LengthOfOriginalSegment <= SegmentMaxDisThreshold)
+		{
+			Results.Emplace(
+				TargetSpline->GetTransformAtSplinePoint(0, ESplineCoordinateSpace::World, true));
+			//左闭右开，不带右侧区间
+			/*Results.Emplace(
+				TargetSpline->GetTransformAtSplinePoint(1, ESplineCoordinateSpace::World, true));*/
+		}
+		//长度大于阈值
+		else
+		{
+			int TargetSegmentNum = FMath::CeilToInt32(LengthOfOriginalSegment / SegmentMaxDisThreshold);
+			float SegmentLength = LengthOfOriginalSegment / TargetSegmentNum;
+			//左闭右开，不带右侧区间
+			for (int32 i = 0; i < TargetSegmentNum; i++)
+			{
+				float ResampleDistance = i * SegmentLength;
+				Results.Emplace(
+					TargetSpline->GetTransformAtDistanceAlongSpline(ResampleDistance, ESplineCoordinateSpace::World,
+					                                                true));
+			}
+		}
+	}
+	else
+	{
+		TArray<FVector> PolyLineEndPointLoc;
+		//曲线，该函数返回闭合样条返回段
+		TargetSpline->ConvertSplineSegmentToPolyLine(TargetSegmentIndex, ESplineCoordinateSpace::World,
+		                                             PolyLineSampleDistance, PolyLineEndPointLoc);
+		Results.Reserve(PolyLineEndPointLoc.Num() - 1);
+		//左闭右开，不带右侧区间
+		for (int32 i = 0; i < PolyLineEndPointLoc.Num() - 1; ++i)
+		{
+			float DisOfPolyLineEndPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
+				PolyLineEndPointLoc[i], ESplineCoordinateSpace::World);
+			Results.Emplace(
+				TargetSpline->GetTransformAtDistanceAlongSpline(DisOfPolyLineEndPoint, ESplineCoordinateSpace::World,
+				                                                true));
+		}
 	}
 	return Results;
 }
@@ -947,28 +1026,31 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControl
 TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline,
                                                                           float StartShrink, float EndShrink,
                                                                           float MaxResampleDistance,
-                                                                          bool bIsClosedInterval)
+                                                                          bool bIsClosedInterval, bool bIsLocalSpace)
 {
 	TArray<FTransform> ResultTransforms;
 	if (nullptr == TargetSpline || TargetSpline->GetNumberOfSplinePoints() < 2)
 	{
 		return ResultTransforms;
 	}
+	const ESplineCoordinateSpace::Type CoordSpace = bIsLocalSpace
+		                                                ? ESplineCoordinateSpace::Local
+		                                                : ESplineCoordinateSpace::World;
 	//为闭合区间添加起点
 	if (bIsClosedInterval)
 	{
 		ResultTransforms.Emplace(
-			TargetSpline->GetTransformAtDistanceAlongSpline(StartShrink, ESplineCoordinateSpace::Local, true));
+			TargetSpline->GetTransformAtDistanceAlongSpline(StartShrink, CoordSpace, true));
 	}
 
 	TArray<FVector> SubdivisionLocations;
-	TargetSpline->ConvertSplineSegmentToPolyLine(0, ESplineCoordinateSpace::Local, MaxResampleDistance,
+	TargetSpline->ConvertSplineSegmentToPolyLine(0, CoordSpace, MaxResampleDistance,
 	                                             SubdivisionLocations);
 	//样条线闭合时获取往复所有细分
 	if (TargetSpline->IsClosedLoop())
 	{
 		TArray<FVector> SubdivisionLocationsBack;
-		TargetSpline->ConvertSplineSegmentToPolyLine(1, ESplineCoordinateSpace::Local, MaxResampleDistance,
+		TargetSpline->ConvertSplineSegmentToPolyLine(1, CoordSpace, MaxResampleDistance,
 		                                             SubdivisionLocationsBack);
 		SubdivisionLocations.Append(SubdivisionLocationsBack);
 	}
@@ -981,13 +1063,13 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const 
 		for (const FVector& SubdivisionLocation : SubdivisionLocations)
 		{
 			float DisOfSubdivisionPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
-				SubdivisionLocation, ESplineCoordinateSpace::Local);
+				SubdivisionLocation, CoordSpace);
 			if (DisOfSubdivisionPoint > (StartShrink + DistanceThreshold) && DisOfSubdivisionPoint < (DisToShrinkEnd -
 				DistanceThreshold))
 			{
 				ResultTransforms.Emplace(
 					TargetSpline->GetTransformAtDistanceAlongSpline(DisOfSubdivisionPoint,
-					                                                ESplineCoordinateSpace::Local, true));
+					                                                CoordSpace, true));
 			}
 		}
 	}
@@ -995,7 +1077,7 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const 
 	if (bIsClosedInterval)
 	{
 		ResultTransforms.Emplace(
-			TargetSpline->GetTransformAtDistanceAlongSpline(EndShrink, ESplineCoordinateSpace::Local, true));
+			TargetSpline->GetTransformAtDistanceAlongSpline(EndShrink, CoordSpace, true));
 	}
 	return ResultTransforms;
 }

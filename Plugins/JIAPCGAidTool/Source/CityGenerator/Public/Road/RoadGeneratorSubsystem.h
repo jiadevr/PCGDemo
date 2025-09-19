@@ -77,11 +77,10 @@ protected:
 	/**
 	 * 更新单根样条的分段数据，**后续可能会对LinearType控制点进行进一步优化**
 	 * @param TargetSpline 需要更新数据的样条
-	 * @param SampleDistance SplineToPolyLine细分采样数据
 	 */
-	void UpdateSplineSegments(USplineComponent* TargetSpline, float SampleDistance = 50.0f);
+	void UpdateSplineSegments(USplineComponent* TargetSpline);
 	//这个值50分段大概在1000cm
-	float PolyLineSampleDistance=50.0f;
+	float PolyLineSampleDistance=200.0f;
 	
 	/**
 	 * 根据SplineSegmentsInfo数据调用Get2DIntersection计算样条交点，使用四叉树和备忘录剪枝。
@@ -143,7 +142,13 @@ public:
 	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
 	                               float EndShrink = 0.0f);
 
-	float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 StartPointIndex);
+	/**
+	 * 获得Spline给定Segment的长度，支持CloseLoop
+	 * @param TargetSpline 指定Spine
+	 * @param SegmentIndex 需要获取的Segment序号
+	 * @return 该Segment长度，当SegmentIndex不合法是返回0
+	 */
+	float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex);
 
 	/**
 	 * 对给定样条每一段进行重采样并整合输出，以获得Sweep所需的路径点。
@@ -158,7 +163,6 @@ public:
 	bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
 	                         float MaxResampleDistance, float StartShrink = 0.0,
 	                         float EndShrink = 0.0);
-	
 	/**
 	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素，两数组要求元素唯一
 	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries
@@ -168,6 +172,8 @@ public:
 	 */
 	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);
 protected:
+
+	TArray<FTransform> ResampleSplineSegment(USplineComponent* TargetSpline,int32 TargetSegmentIndex);
 	/**
 	 * 道路枚举名称-道路构建信息表，在本类的Init中初始化
 	 */
@@ -196,11 +202,12 @@ protected:
 	 * @param EndShrink 终点偏移量（>=0）
 	 * @param MaxResampleDistance 最大采样距离
 	 * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
+	 * @param bIsLocalSpace 是否返回局部空间坐标
 	 * @return 返回该Segment插值之后的Transform数组
 	 */
 	TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,
 	                                                 float EndShrink, float MaxResampleDistance,
-	                                                 bool bIsClosedInterval);
+	                                                 bool bIsClosedInterval,bool bIsLocalSpace);
 
 #pragma endregion GenerateRoad
 };
