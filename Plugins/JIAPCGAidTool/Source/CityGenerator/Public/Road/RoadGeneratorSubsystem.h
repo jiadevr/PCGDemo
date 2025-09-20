@@ -224,9 +224,9 @@ void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, cons
 	{
 		return;
 	}
-	TArray<int32> SortedIndices;
-	InsertMap.GetKeys(SortedIndices);
-	SortedIndices.Sort();
+	TArray<int32> SortedIndexes;
+	InsertMap.GetKeys(SortedIndexes);
+	SortedIndexes.Sort();
 
 	int32 TotalElementsToInsert = 0;
 	for (const auto& Pair : InsertMap)
@@ -242,7 +242,7 @@ void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, cons
 	int32 SourceIndex = 0;
 	int32 NewIndex = 0;
 
-	for (int32 InsertIndex : SortedIndices)
+	for (int32 InsertIndex : SortedIndexes)
 	{
 		int32 Count=InsertIndex-SourceIndex+1;
 		for (int32 i=0;i<Count;++i)
