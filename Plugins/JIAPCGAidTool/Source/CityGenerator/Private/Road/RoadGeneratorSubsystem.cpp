@@ -28,8 +28,9 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	RoadPresetMap.Emplace(ELaneType::EXPRESSWAYS, FLaneMeshInfo(2000.0f, 20.0f));
 	ComponentMoveHandle = GEditor->OnComponentTransformChanged().AddUObject(
 		this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
+	RoadActorRemovedHandle = ComponentMoveHandle = GEditor->OnLevelActorDeleted().AddUObject(
+		this, &URoadGeneratorSubsystem::OnRoadActorRemoved);
 }
-
 
 void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType)
 {
@@ -49,14 +50,26 @@ void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, 
 	}
 }
 
+void URoadGeneratorSubsystem::OnRoadActorRemoved(AActor* RemovedActor)
+{
+	if (nullptr == RemovedActor) { return; }
+	URoadMeshGenerator* RoadDataComp = Cast<URoadMeshGenerator>(
+		RemovedActor->GetComponentByClass(URoadMeshGenerator::StaticClass()));
+	if (nullptr == RoadDataComp) { return; }
+
+	RoadMeshGenerators.Remove(TWeakObjectPtr<URoadMeshGenerator>(RoadDataComp));
+}
+
 void URoadGeneratorSubsystem::Deinitialize()
 {
 	SplineSegmentsInfo.Empty();
 	SplineQuadTree.Empty();
 	RoadIntersectionsComps.Empty();
 	GEditor->OnComponentTransformChanged().Remove(ComponentMoveHandle);
+	GEditor->OnLevelActorDeleted().Remove(RoadActorRemovedHandle);
 	Super::Deinitialize();
 }
+
 #pragma region GenerateIntersection
 void URoadGeneratorSubsystem::GenerateIntersections()
 {
@@ -179,6 +192,7 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 		return false;
 	}
 	bIntersectionsGenerated = false;
+	FSplinePolyLineSegment::ResetGlobalIndex();
 	for (TWeakObjectPtr<USplineComponent> SplineComponent : RoadSplines)
 	{
 		USplineComponent* PinnedSplineComp = SplineComponent.Pin().Get();
@@ -186,6 +200,8 @@ bool URoadGeneratorSubsystem::InitialRoadSplines()
 		//PolyLineSubdivisionDis.GetValueOnGameThread()
 		UpdateSplineSegments(PinnedSplineComp);
 	}
+	//
+	SplineQuadTree.Empty();
 	return true;
 }
 
@@ -510,13 +526,13 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				{
 					if (SingleSpline == PolyLineSegment.OwnerSpline)
 					{
-						OccupiedSegmentsIndex.Emplace(PolyLineSegment.SegmentIndex);
+						OccupiedSegmentsIndex.Emplace(PolyLineSegment.GetGlobalIndex());
 					}
 				}
 			}
 		}
 		TArray<TArray<uint32>> ContinuousSegmentsGroups;
-		//去除被占用的，获取连续的Segments数据
+		//去除被占用的，获取连续的Segments数据,均使用GlobalID作为区分
 		if (!OccupiedSegmentsIndex.IsEmpty())
 		{
 			ContinuousSegmentsGroups = GetContinuousIndexSeries(AllSegmentsIndex, OccupiedSegmentsIndex);
@@ -555,6 +571,10 @@ void URoadGeneratorSubsystem::GenerateRoads()
 	}
 	for (const auto& RoadMeshGenerator : RoadMeshGenerators)
 	{
+		if (!RoadMeshGenerator.IsValid())
+		{
+			continue;
+		}
 		RoadMeshGenerator->GenerateMesh();
 	}
 }
@@ -876,8 +896,8 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(USplineComponent* Tar
 	TMap<int32, TArray<FTransform>> SegmentsToSubdivide;
 	Results.Reserve(PolyLineEndPointLoc.Num());
 	Results.Emplace(
-			TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[0], ESplineCoordinateSpace::World,
-															true));
+		TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[0], ESplineCoordinateSpace::World,
+		                                                true));
 	for (int i = 1; i < PolyLineLengths.Num(); ++i)
 	{
 		Results.Emplace(
@@ -898,7 +918,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(USplineComponent* Tar
 	{
 		const int32 SegmentIndex = TargetSegment.Key;
 		const float OriginalSegmentLength = PolyLineLengths[SegmentIndex + 1] - PolyLineLengths[SegmentIndex];
-		int32 TargetSubdivisionNum = FMath::CeilToInt32(OriginalSegmentLength/ SegmentMaxDisThreshold);
+		int32 TargetSubdivisionNum = FMath::CeilToInt32(OriginalSegmentLength / SegmentMaxDisThreshold);
 		double TargetSubdivisionLength = OriginalSegmentLength / TargetSubdivisionNum;
 		TArray<FTransform> SubdivisionPoints;
 		for (int32 j = 1; j < TargetSubdivisionNum; j++)

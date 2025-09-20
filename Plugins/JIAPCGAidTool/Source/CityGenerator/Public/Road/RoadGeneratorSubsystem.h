@@ -39,6 +39,10 @@ public:
 
 	FDelegateHandle ComponentMoveHandle;
 
+	void OnRoadActorRemoved(AActor* RemovedActor);
+
+	FDelegateHandle RoadActorRemovedHandle;
+
 	virtual void Deinitialize() override;
 
 #pragma region GenerateIntersection
@@ -61,7 +65,7 @@ public:
 	const float MergeThreshold = 200.0f;
 
 	UFUNCTION(BlueprintCallable)
-	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = true, float Thickness = 30.0f);
+	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = false, float Thickness = 30.0f);
 
 	//对于非POD对象的数据插入
 	template <typename T>

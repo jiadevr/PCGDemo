@@ -20,7 +20,8 @@ struct FSplinePolyLineSegment
 	}
 
 public:
-	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, uint32 InSegmentIndex, uint32 InLastSegmentIndex,
+	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, uint32 InSegmentIndex,
+	                       uint32 InLastSegmentIndex,
 	                       const FTransform& InStartTransform,
 	                       const FTransform& InEndTransform): OwnerSpline(InSplineRef),
 	                                                          SegmentIndex(InSegmentIndex),
@@ -36,6 +37,7 @@ public:
 		OwnerSpline = nullptr;
 	}
 
+	static void ResetGlobalIndex() { SegmentGlobalIndex = 0; }
 	/**
 	 * 所属的Spline信息
 	 */
@@ -107,7 +109,7 @@ public:
 		IntersectedSplines.Empty();
 	}
 
-	
+
 	/**
 	 * 相交的样条线引用
 	 */
@@ -134,7 +136,9 @@ struct FIntersectionSegment
 	GENERATED_BODY()
 
 public:
-	FIntersectionSegment(){};
+	FIntersectionSegment()
+	{
+	};
 
 	FIntersectionSegment(TWeakObjectPtr<USplineComponent>& InOwnerSplines, const FVector& InIntersectionEndPointWS,
 	                     bool bInIsFlowIn, float InRoadWidth): OwnerSpline(InOwnerSplines),
@@ -142,11 +146,12 @@ public:
 	                                                           bIsFlowIn(bInIsFlowIn), RoadWidth(InRoadWidth)
 	{
 	}
+
 	~FIntersectionSegment()
 	{
 		OwnerSpline = nullptr;
 	};
-	
+
 	/**
 	 * 所属的SplineComponent
 	 */
@@ -194,7 +199,7 @@ public:
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(400.0, 20.0);
 	}
 
-	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight=30.0f, const float Length = 1000.0f)
+	FLaneMeshInfo(const float CrossSectionWidth, const float CrossSectionHeight = 30.0f, const float Length = 1000.0f)
 	{
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
 		SampleLength = Length;
