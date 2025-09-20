@@ -1,4 +1,5 @@
-﻿#include "Misc/AutomationTest.h"
+﻿#include "Kismet/KismetStringLibrary.h"
+#include "Misc/AutomationTest.h"
 #include "Road/RoadGeneratorSubsystem.h"
 #if WITH_DEV_AUTOMATION_TESTS
 IMPLEMENT_COMPLEX_AUTOMATION_TEST(FRoadGeneratorSubsystemTest,
@@ -91,26 +92,138 @@ bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem, TArray<int
 	return true;
 }
 
-template <typename T>
-bool TestInsertElementsAtIndex(URoadGeneratorSubsystem* Subsystem, TArray<T>& TargetArray,
-                               const TMap<int32, TArray<T>>& InsertMap)
+bool TestInsertElementsAtIndex_Str(URoadGeneratorSubsystem* Subsystem)
 {
+	TArray<FString> TargetArray{"a", "b", "c", "d", "e", "f"};
+	TPair<int32, TArray<FString>> InsertElem0{0, TArray<FString>{"0a", "1a", "2a"}};
+	TPair<int32, TArray<FString>> InsertElem1{3, TArray<FString>{"0d", "1d"}};
+	TPair<int32, TArray<FString>> InsertElem2{5, TArray<FString>{"0f", "1f", "2f"}};
+	TMap<int32, TArray<FString>> InsertMap{InsertElem0, InsertElem1, InsertElem2};
+
+	TArray<FString> BackUpArray = TargetArray;
 	int32 ElemNum = 0;
 	TArray<int32> IncreasingIndexes;
-	TArray<T> BackUpArray = TargetArray;
 	for (const auto& IndexElemMap : InsertMap)
 	{
 		ElemNum += IndexElemMap.Value.Num();
 		IncreasingIndexes.Emplace(IndexElemMap.Key);
 	}
 	IncreasingIndexes.Sort();
-	Subsystem->InsertElementsAtIndex(TargetArray, InsertMap);
-	//需要实例化模板才能具体判定
+
+	Subsystem->InsertElementsAtIndex<FString>(TargetArray, InsertMap);
+
+	FString Result;
+	for (const FString& Elem : TargetArray)
+	{
+		Result += Elem;
+		Result += ",";
+	}
+	UE_LOG(LogTemp, Display, TEXT("TestInsertElementsAtIndex Output:%s"), *Result);
 	if (TargetArray.Num() != BackUpArray.Num() + ElemNum)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Lose Elem"))
 		return false;
 	}
+	for (int32 IncreasingIndex : IncreasingIndexes)
+	{
+		if (IncreasingIndex < BackUpArray.Num() - 1)
+		{
+			FString OriginElem = BackUpArray[IncreasingIndex];
+			FString OriginNextElem = BackUpArray[IncreasingIndex + 1];
+			if (TargetArray.Find(OriginNextElem) - TargetArray.Find(OriginElem) - 1 != InsertMap[IncreasingIndex].Num())
+			{
+				UE_LOG(LogTemp, Error, TEXT("Error Insert Loc"))
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+bool TestInsertElementsAtIndex_Trans(URoadGeneratorSubsystem* Subsystem)
+{
+	//测试阳历要求Scale值从1递增,基础元素Translation的值和序号一样，因为Transform没法用Find定位
+	TArray<FTransform> TargetArray{
+		FTransform(FRotator(0, 0, 0), FVector(0.0), FVector(0.0)),
+		FTransform(FRotator(90, 0, 0), FVector(1.0), FVector(0.0)),
+		FTransform(FRotator(0, 90, 0), FVector(2.0), FVector(0.0)),
+		FTransform(FRotator(0, 0, 90), FVector(3.0), FVector(0.0))
+	};
+	TPair<int32, TArray<FTransform>> InsertElem0{
+		0,
+		TArray<FTransform>{
+			FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(1.0)),
+			FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(2.0)),
+			FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(3.0))
+		}
+	};
+	TPair<int32, TArray<FTransform>> InsertElem1{
+		2,
+		TArray<FTransform>{
+			FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(1.0)),
+			FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(2.0)),
+			FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(3.0))
+		}
+	};
+	TPair<int32, TArray<FTransform>> InsertElem2{
+		3,
+		TArray<FTransform>{
+			FTransform(FRotator(0, 90, 0), FVector(3.0), FVector(1.0)),
+			FTransform(FRotator(0, 90, 0), FVector(3.0), FVector(2.0))
+		}
+	};
+	TMap<int32, TArray<FTransform>> InsertMap{InsertElem0, InsertElem1, InsertElem2};
+
+
+	TArray<FTransform> BackUpArray = TargetArray;
+	int32 ElemNum = 0;
+	TArray<int32> IncreasingIndexes;
+	for (const auto& IndexElemMap : InsertMap)
+	{
+		ElemNum += IndexElemMap.Value.Num();
+		IncreasingIndexes.Emplace(IndexElemMap.Key);
+	}
+	IncreasingIndexes.Sort();
+	Subsystem->InsertElementsAtIndex<FTransform>(TargetArray, InsertMap);
+	FString Result;
+	for (const FTransform& Elem : TargetArray)
+	{
+		Result += FString::Printf(TEXT("Transform :%f,"), Elem.GetScale3D().X);
+	}
+	UE_LOG(LogTemp, Display, TEXT("TestInsertElementsAtIndex Output:%s"), *Result);
+	if (TargetArray.Num() != BackUpArray.Num() + ElemNum)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Lose Elem"))
+		return false;
+	}
+	int32 InsertCounter = 0;
+	for (int32 i = TargetArray.Num() - 1; i >= 0; --i)
+	{
+		if (TargetArray[i].GetScale3D() != FVector(0.0))
+		{
+			if (InsertCounter > 0)
+			{
+				if (!FMath::IsNearlyEqual(TargetArray[i].GetScale3D().X - TargetArray[i - 1].GetScale3D().X,
+				                          1.0, 0.001))
+				{
+					UE_LOG(LogTemp, Error, TEXT("Error Elem Order"))
+					return false;
+				}
+			}
+			InsertCounter++;
+		}
+		else
+		{
+			int32 OriginIndex=FMath::RoundToInt32(TargetArray[i].GetTranslation().X);
+			if (InsertCounter > 0 && InsertMap[OriginIndex].Num() != InsertCounter)
+			{
+				UE_LOG(LogTemp, Error, TEXT("Lose Elem"))
+				return false;
+			}
+			InsertCounter = 0;
+		}
+	}
+
 	return true;
 }
 
@@ -130,7 +243,6 @@ bool FRoadGeneratorSubsystemTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	//TestFor GetContinuousIndexSeries()
-
 	{
 		//测试用例
 		struct FGetContinuousIndexTestCase
@@ -175,48 +287,14 @@ bool FRoadGeneratorSubsystemTest::RunTest(const FString& Parameters)
 
 	//TestFor InsertElementsAtIndex()
 	{
-		/*TArray<FString> TargetArray0{"a", "b", "c", "d", "e", "f"};
-		TPair<int32, TArray<FString>> InsertElem0{0, TArray<FString>{"0a", "1a", "2a"}};
-		TPair<int32, TArray<FString>> InsertElem1{4, TArray<FString>{"0d", "1d"}};
-		TPair<int32, TArray<FString>> InsertElem2{5, TArray<FString>{"0f", "1f", "2f"}};
-		TMap<int32, TArray<FString>> InsertArray0{InsertElem0, InsertElem1, InsertElem2};
-		if (!TestInsertElementsAtIndex(TestingTarget, TargetArray0, InsertArray0))
+		if (!TestInsertElementsAtIndex_Str(TestingTarget))
 		{
 			AddError("[InsertElementsAtIndex] Case0 Failed");
 			bPassAllTest &= false;
-		}*/
+		}
 
-		TArray<FTransform> TargetArray1{
-			FTransform(FRotator(0, 0, 0), FVector(0.0), FVector(0.0)),
-			FTransform(FRotator(90, 0, 0), FVector(1.0), FVector(0.0)),
-			FTransform(FRotator(0, 90, 0), FVector(2.0), FVector(0.0)),
-			FTransform(FRotator(0, 0, 90), FVector(3.0), FVector(0.0))
-		};
-		TPair<int32, TArray<FTransform>> InsertElem3{
-			0,
-			TArray<FTransform>{
-				FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(1.0)),
-				FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(2.0)),
-				FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(3.0))
-			}
-		};
-		TPair<int32, TArray<FTransform>> InsertElem4{
-			2,
-			TArray<FTransform>{
-				FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(1.0)),
-				FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(2.0)),
-				FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(3.0))
-			}
-		};
-		TPair<int32, TArray<FTransform>> InsertElem5{
-			3,
-			TArray<FTransform>{
-				FTransform(FRotator(0, 90, 0), FVector(3.0), FVector(1.0)),
-				FTransform(FRotator(0, 90, 0), FVector(3.0), FVector(2.0))
-			}
-		};
-		TMap<int32, TArray<FTransform>> InsertArray1{InsertElem3, InsertElem4, InsertElem5};
-		if (!TestInsertElementsAtIndex(TestingTarget, TargetArray1, InsertArray1))
+
+		if (!TestInsertElementsAtIndex_Trans(TestingTarget))
 		{
 			AddError("[InsertElementsAtIndex] Case1 Failed");
 			bPassAllTest &= false;
