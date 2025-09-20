@@ -24,6 +24,12 @@ public:
 	 */
 	void SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData);
 
+	[[nodiscard]]TArray<FIntersectionSegment> GetIntersectionSegmentsData(){return IntersectionsData;}
+
+	/**
+	 * 返回交点对象的2D位置盒，被RoadGeneratorSubsystem::GetInteractionOccupiedSegments计算道路切割
+	 * @return 返回交叉路口的包围盒
+	 */
 	FBox2D GetOccupiedBox() const
 	{
 		return OccupiedBox;

@@ -56,7 +56,8 @@ public:
 	uint32 LastSegmentIndex = 0;
 
 	/**
-	 * Segment起点，世界空间位置
+	 * Segment起点，世界空间位置；
+	 * @TODO后续需要重新考虑一下是不是必须Transform，FVector作为POD对象预处理效率更高
 	 */
 	FTransform StartTransform = FTransform::Identity;
 

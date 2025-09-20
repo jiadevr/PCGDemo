@@ -39,6 +39,10 @@ public:
 
 	FDelegateHandle ComponentMoveHandle;
 
+	/**
+	 * 绑定OnLevelActorDeleted()主要用于解决
+	 * @param RemovedActor 
+	 */
 	void OnRoadActorRemoved(AActor* RemovedActor);
 
 	FDelegateHandle RoadActorRemovedHandle;
@@ -64,10 +68,21 @@ public:
 	 */
 	const float MergeThreshold = 200.0f;
 
+	/**
+	 * Debug函数，显示所有Spline的Segment分割情况，会之前会调用FlushPersistentDebugLines清除其他绘制信息
+	 * @param bUpdateBeforeDraw 是否首先刷新Spline信息
+	 * @param Thickness Debug绘制宽度
+	 */
 	UFUNCTION(BlueprintCallable)
 	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = false, float Thickness = 30.0f);
-
-	//对于非POD对象的数据插入
+	
+	/**
+	 * 模板函数，用于ResampleSpline函数中长直线段细分数据加入，以非POD（不能使用FMemoryCopy）为处理对象
+	 * 应当为Protected，为了满足单元测试需求设置为Public
+	 * @tparam T POD变量类型，在类中用于FTransform
+	 * @param TargetArray 原数组，原位改写
+	 * @param InsertMap 插入序号——插入数据数组表，插入数据数组为被插入到序号后边
+	 */
 	template <typename T>
 	void InsertElementsAtIndex(TArray<T>& TargetArray, const TMap<int32, TArray<T>>& InsertMap);
 
@@ -80,8 +95,6 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	bool InitialRoadSplines();
 
-	TArray<FTransform> ResampleSpline(USplineComponent* TargetSpline);
-
 	TSet<TWeakObjectPtr<USplineComponent>> RoadSplines;
 
 	/**
@@ -89,8 +102,17 @@ protected:
 	 * @param TargetSpline 需要更新数据的样条
 	 */
 	void UpdateSplineSegments(USplineComponent* TargetSpline);
+	
 	//这个值50分段大概在1000cm
-	float PolyLineSampleDistance = 200.0f;
+	const float PolyLineSampleDistance = 200.0f;
+
+	/**
+	 * 用于将根据PolyLineSampleDistance值Spline进行细分重采样，
+	 * 主体函数是ConvertSplineToPolyLineWithDistances，在此基础上加入了对长直线的细分，避免在交点计算时发生大范围切断导致道路无法连接
+	 * @param TargetSpline 目标样条线
+	 * @return 重采样的细分点Transform
+	 */
+	TArray<FTransform> ResampleSpline(const USplineComponent* TargetSpline);
 
 	/**
 	 * 根据SplineSegmentsInfo数据调用Get2DIntersection计算样条交点，使用四叉树和备忘录剪枝。
@@ -108,7 +130,15 @@ protected:
 	 * 用于加速样条交点计算的四叉树
 	 */
 	TQuadTree<FSplinePolyLineSegment> SplineQuadTree{FBox2D()};
-
+	
+	/**
+	 * 使用四叉树返回交点处重叠的Segment信息，用于道路切割
+	 * @param TargetIntersection 交点对象引用，需要交点对象的GetOccupiedBox
+	 * @return 返回四叉树查询获得的全部Segment信息
+	 */
+	TArray<FSplinePolyLineSegment> GetInteractionOccupiedSegments(
+		TWeakObjectPtr<UIntersectionMeshGenerator> TargetIntersection) const;
+	
 	/**
 	 * 生成的路口Actor上挂载的Component数组
 	 */
@@ -126,17 +156,19 @@ protected:
 
 	TMap<TWeakObjectPtr<USplineComponent>, TSet<TWeakObjectPtr<UIntersectionMeshGenerator>>> IntersectionCompOnSpline;
 
-	TArray<FSplinePolyLineSegment> GetInteractionOccupiedSegments(
-		TWeakObjectPtr<UIntersectionMeshGenerator> TargetIntersection) const;
-
 #pragma endregion GenerateIntersection
 
 #pragma region GenerateRoad
 
 public:
+	/**
+	 * 对外接口，需要在交叉路口生成之后调用，生成道路构建信息
+	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoads();
-
+	
+	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
+	
 	/**
 	 * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
 	 * @param TargetSpline 目标样条线
@@ -144,9 +176,6 @@ public:
 	 * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
 	 * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
 	 */
-
-	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
-
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
 	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
@@ -175,7 +204,7 @@ public:
 	                         float EndShrink = 0.0);
 	/**
 	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素，两数组要求元素唯一
-	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries
+	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries，函数本身应该是Protected，但是为了单元测试放在Public
 	 * @param AllSegmentIndex 连续有序的SegmentIndex，要求元素唯一
 	 * @param BreakPoints 断点数组，可无序，要求元素唯一
 	 * @return 切分获得的子数组（不含断点元素）
@@ -239,7 +268,7 @@ void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, cons
 	}
 	const int32 FinalSize = TargetArray.Num() + TotalElementsToInsert;
 	TargetArray.Reserve(FinalSize);
-	
+
 	TArray<T> TempArray;
 	TempArray.SetNum(FinalSize);
 
@@ -248,21 +277,21 @@ void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, cons
 
 	for (int32 InsertIndex : SortedIndexes)
 	{
-		int32 Count=InsertIndex-SourceIndex+1;
-		for (int32 i=0;i<Count;++i)
+		int32 Count = InsertIndex - SourceIndex + 1;
+		for (int32 i = 0; i < Count; ++i)
 		{
-			TempArray[NewIndex++]=TargetArray[SourceIndex++];
+			TempArray[NewIndex++] = TargetArray[SourceIndex++];
 		}
-		const TArray<T>& InsertElems=InsertMap[InsertIndex];
+		const TArray<T>& InsertElems = InsertMap[InsertIndex];
 		for (const T& Elem : InsertElems)
 		{
-			TempArray[NewIndex++]=Elem;
+			TempArray[NewIndex++] = Elem;
 		}
 	}
 	while (SourceIndex < TargetArray.Num())
 	{
-		TempArray[NewIndex++]=TargetArray[SourceIndex++];
+		TempArray[NewIndex++] = TargetArray[SourceIndex++];
 	}
-	
+
 	TargetArray = MoveTemp(TempArray);
 }

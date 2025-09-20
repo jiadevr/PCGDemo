@@ -55,9 +55,28 @@ void URoadGeneratorSubsystem::OnRoadActorRemoved(AActor* RemovedActor)
 	if (nullptr == RemovedActor) { return; }
 	URoadMeshGenerator* RoadDataComp = Cast<URoadMeshGenerator>(
 		RemovedActor->GetComponentByClass(URoadMeshGenerator::StaticClass()));
-	if (nullptr == RoadDataComp) { return; }
-
-	RoadMeshGenerators.Remove(TWeakObjectPtr<URoadMeshGenerator>(RoadDataComp));
+	if (nullptr != RoadDataComp)
+	{
+		RoadMeshGenerators.Remove(TWeakObjectPtr<URoadMeshGenerator>(RoadDataComp));
+		return;
+	}
+	UIntersectionMeshGenerator* IntersectionDataComp = Cast<UIntersectionMeshGenerator>(
+		RemovedActor->GetComponentByClass(UIntersectionMeshGenerator::StaticClass()));
+	if (nullptr != IntersectionDataComp)
+	{
+		TArray<FIntersectionSegment> Segments = IntersectionDataComp->GetIntersectionSegmentsData();
+		TArray<TWeakObjectPtr<USplineComponent>> InfluencedSplines;
+		for (auto& Segment : Segments)
+		{
+			InfluencedSplines.Emplace(Segment.OwnerSpline);
+		}
+		for (auto& InfluencedSpline : InfluencedSplines)
+		{
+			IntersectionCompOnSpline[InfluencedSpline].Remove(
+				TWeakObjectPtr<UIntersectionMeshGenerator>(IntersectionDataComp));
+		}
+		return;
+	}
 }
 
 void URoadGeneratorSubsystem::Deinitialize()
@@ -878,9 +897,8 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 	return Results;
 }
 
-TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(USplineComponent* TargetSpline)
+TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponent* TargetSpline)
 {
-	//返回左闭右开区间
 	TArray<FTransform> Results;
 	if (nullptr == TargetSpline || TargetSpline->GetNumberOfSplinePoints() <= 1)
 	{
