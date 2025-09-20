@@ -203,10 +203,7 @@ void URoadGeneratorSubsystem::UpdateSplineSegments(USplineComponent* TargetSplin
 	{
 		return;
 	}
-	for (int i = 0; i < OriginalSegmentCount; ++i)
-	{
-		ResamplePointsOnSpline.Append(ResampleSplineSegment(TargetSpline, i));
-	}
+	ResamplePointsOnSpline.Append(ResampleSpline(TargetSpline));
 	//上面输出左闭右开区间，非闭合曲线补上最后一个点
 	if (!TargetSpline->IsClosedLoop())
 	{
@@ -866,64 +863,66 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 	return Results;
 }
 
-TArray<FTransform> URoadGeneratorSubsystem::ResampleSplineSegment(USplineComponent* TargetSpline,
-                                                                  int32 TargetSegmentIndex)
+TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(USplineComponent* TargetSpline)
 {
 	//返回左闭右开区间
 	TArray<FTransform> Results;
-	if (nullptr == TargetSpline || TargetSegmentIndex < 0 || TargetSegmentIndex >= TargetSpline->
-		GetNumberOfSplineSegments())
+	if (nullptr == TargetSpline || TargetSpline->GetNumberOfSplinePoints() <= 1)
 	{
 		return Results;
 	}
 	const float SegmentMaxDisThreshold = 10 * PolyLineSampleDistance;
-	const float LengthOfOriginalSegment = GetSplineSegmentLength(TargetSpline, TargetSegmentIndex);
+	//const float LengthOfOriginalSpline = TargetSpline->GetSplineLength();
 	Results.Reset();
 	Results.Reserve(2);
-	if (TargetSpline->GetSplinePointType(TargetSegmentIndex) == ESplinePointType::Linear)
+	TArray<FVector> PolyLineEndPointLoc;
+	TArray<double> PolyLineLengths;
+	//曲线，该函数返回闭合样条返回段
+	TargetSpline->ConvertSplineToPolyLineWithDistances(ESplineCoordinateSpace::World, PolyLineSampleDistance,
+	                                                   PolyLineEndPointLoc, PolyLineLengths);
+	TMap<int32, TArray<FTransform>> SegmentsToSubdivide;
+	TArray<int32> BreakPoints;
+	//前缀和数组，记录前方线段长度和;前缀和数组长度等于点数
+	TArray<double> PrefixSumArray;
+	for (int32 i = 0; i <= PolyLineLengths.Num(); i++)
 	{
-		//直线,往复直线完全重合，不重复生成
-		//长度小于阈值
-		if (LengthOfOriginalSegment <= SegmentMaxDisThreshold)
+		if (PolyLineLengths[i] > SegmentMaxDisThreshold)
 		{
-			Results.Emplace(
-				TargetSpline->GetTransformAtSplinePoint(0, ESplineCoordinateSpace::World, true));
-			//左闭右开，不带右侧区间
-			/*Results.Emplace(
-				TargetSpline->GetTransformAtSplinePoint(1, ESplineCoordinateSpace::World, true));*/
+			SegmentsToSubdivide.Add(i);
+			BreakPoints.Emplace(i);
 		}
-		//长度大于阈值
-		else
+		PrefixSumArray[i] = (i == 0 ? 0.0 : PrefixSumArray[i - 1] + PolyLineLengths[i - 1]);
+	}
+	Results.Reserve(PolyLineEndPointLoc.Num());
+	for (int32 i = 0; i < PrefixSumArray.Num(); ++i)
+	{
+		Results.Emplace(
+			TargetSpline->GetTransformAtDistanceAlongSpline(PrefixSumArray[i], ESplineCoordinateSpace::World,
+			                                                true));
+	}
+	if (BreakPoints.IsEmpty())
+	{
+		return Results;
+	}
+	//如果需要处理
+	for (TPair<int32, TArray<FTransform>>& TargetSegment : SegmentsToSubdivide)
+	{
+		const int32 SegmentIndex = TargetSegment.Key;
+		int32 TargetSubdivisionNum = FMath::CeilToInt32(PolyLineLengths[SegmentIndex] / SegmentMaxDisThreshold);
+		double TargetSubdivisionLength = PolyLineLengths[SegmentIndex] / TargetSubdivisionNum;
+		TArray<FTransform> SubdivisionPoints;
+		for (int32 j = 1; j < TargetSubdivisionNum; j++)
 		{
-			int TargetSegmentNum = FMath::CeilToInt32(LengthOfOriginalSegment / SegmentMaxDisThreshold);
-			float SegmentLength = LengthOfOriginalSegment / TargetSegmentNum;
-			//左闭右开，不带右侧区间
-			for (int32 i = 0; i < TargetSegmentNum; i++)
-			{
-				float ResampleDistance = i * SegmentLength;
-				Results.Emplace(
-					TargetSpline->GetTransformAtDistanceAlongSpline(ResampleDistance, ESplineCoordinateSpace::World,
-					                                                true));
-			}
+			float DisToSubdivisionPoint = static_cast<float>(j * TargetSubdivisionLength + PrefixSumArray[
+				SegmentIndex]);
+			TargetSegment.Value.Emplace(
+				TargetSpline->GetTransformAtDistanceAlongSpline(DisToSubdivisionPoint, ESplineCoordinateSpace::World));
 		}
 	}
-	else
-	{
-		TArray<FVector> PolyLineEndPointLoc;
-		//曲线，该函数返回闭合样条返回段
-		TargetSpline->ConvertSplineSegmentToPolyLine(TargetSegmentIndex, ESplineCoordinateSpace::World,
-		                                             PolyLineSampleDistance, PolyLineEndPointLoc);
-		Results.Reserve(PolyLineEndPointLoc.Num() - 1);
-		//左闭右开，不带右侧区间
-		for (int32 i = 0; i < PolyLineEndPointLoc.Num() - 1; ++i)
-		{
-			float DisOfPolyLineEndPoint = TargetSpline->GetDistanceAlongSplineAtLocation(
-				PolyLineEndPointLoc[i], ESplineCoordinateSpace::World);
-			Results.Emplace(
-				TargetSpline->GetTransformAtDistanceAlongSpline(DisOfPolyLineEndPoint, ESplineCoordinateSpace::World,
-				                                                true));
-		}
-	}
+	//FTransform为非POD对象，不能直接内存拷贝，下面这个函数意义不大
+	/*TArray<TArray<uint32>> ContinuousIndexSeries = GetContinuousIndexSeries(
+		BreakPoints, static_cast<uint32>(PolyLineLengths.Num() - 1));*/
+	InsertElementsAtIndex(Results,SegmentsToSubdivide);
 	return Results;
 }
 

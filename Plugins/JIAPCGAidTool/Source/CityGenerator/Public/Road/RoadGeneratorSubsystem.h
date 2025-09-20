@@ -63,6 +63,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = true, float Thickness = 30.0f);
 
+	//对于非POD对象的数据插入
+	template <typename T>
+	void InsertElementsAtIndex(TArray<T>& TargetArray, const TMap<int32, TArray<T>>& InsertMap);
+
 protected:
 	bool bIntersectionsGenerated = false;
 	/**
@@ -72,6 +76,8 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	bool InitialRoadSplines();
 
+	TArray<FTransform> ResampleSpline(USplineComponent* TargetSpline);
+
 	TSet<TWeakObjectPtr<USplineComponent>> RoadSplines;
 
 	/**
@@ -80,8 +86,8 @@ protected:
 	 */
 	void UpdateSplineSegments(USplineComponent* TargetSpline);
 	//这个值50分段大概在1000cm
-	float PolyLineSampleDistance=200.0f;
-	
+	float PolyLineSampleDistance = 200.0f;
+
 	/**
 	 * 根据SplineSegmentsInfo数据调用Get2DIntersection计算样条交点，使用四叉树和备忘录剪枝。
 	 * 后续可能会放在多线程做，因此保留返回值形式
@@ -136,7 +142,7 @@ public:
 	 */
 
 	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
-	
+
 	UFUNCTION(BlueprintCallable)
 	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
 	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
@@ -171,9 +177,8 @@ public:
 	 * @return 切分获得的子数组（不含断点元素）
 	 */
 	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);
-protected:
 
-	TArray<FTransform> ResampleSplineSegment(USplineComponent* TargetSpline,int32 TargetSegmentIndex);
+protected:
 	/**
 	 * 道路枚举名称-道路构建信息表，在本类的Init中初始化
 	 */
@@ -207,7 +212,53 @@ protected:
 	 */
 	TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,
 	                                                 float EndShrink, float MaxResampleDistance,
-	                                                 bool bIsClosedInterval,bool bIsLocalSpace);
+	                                                 bool bIsClosedInterval, bool bIsLocalSpace);
 
 #pragma endregion GenerateRoad
 };
+
+template <typename T>
+void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, const TMap<int32, TArray<T>>& InsertMap)
+{
+	if (InsertMap.Num() == 0)
+	{
+		return;
+	}
+	TArray<int32> SortedIndices;
+	InsertMap.GetKeys(SortedIndices);
+	SortedIndices.Sort();
+
+	int32 TotalElementsToInsert = 0;
+	for (const auto& Pair : InsertMap)
+	{
+		TotalElementsToInsert += Pair.Value.Num();
+	}
+	const int32 FinalSize = TargetArray.Num() + TotalElementsToInsert;
+	TargetArray.Reserve(FinalSize);
+	
+	TArray<T> TempArray;
+	TempArray.SetNum(FinalSize);
+
+	int32 SourceIndex = 0;
+	int32 NewIndex = 0;
+
+	for (int32 InsertIndex : SortedIndices)
+	{
+		int32 Count=InsertIndex-SourceIndex+1;
+		for (int32 i=0;i<Count;++i)
+		{
+			TempArray[NewIndex++]=TargetArray[SourceIndex++];
+		}
+		const TArray<T>& InsertElems=InsertMap[InsertIndex];
+		for (const T& Elem : InsertElems)
+		{
+			TempArray[NewIndex++]=Elem;
+		}
+	}
+	while (SourceIndex < TargetArray.Num())
+	{
+		TempArray[NewIndex++]=TargetArray[SourceIndex++];
+	}
+	
+	TargetArray = MoveTemp(TempArray);
+}

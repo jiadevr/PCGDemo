@@ -91,6 +91,28 @@ bool TestGetContinuousIndexSeries(URoadGeneratorSubsystem* Subsystem, TArray<int
 	return true;
 }
 
+template <typename T>
+bool TestInsertElementsAtIndex(URoadGeneratorSubsystem* Subsystem, TArray<T>& TargetArray,
+                               const TMap<int32, TArray<T>>& InsertMap)
+{
+	int32 ElemNum = 0;
+	TArray<int32> IncreasingIndexes;
+	TArray<T> BackUpArray = TargetArray;
+	for (const auto& IndexElemMap : InsertMap)
+	{
+		ElemNum += IndexElemMap.Value.Num();
+		IncreasingIndexes.Emplace(IndexElemMap.Key);
+	}
+	IncreasingIndexes.Sort();
+	Subsystem->InsertElementsAtIndex(TargetArray, InsertMap);
+	//需要实例化模板才能具体判定
+	if (TargetArray.Num() != BackUpArray.Num() + ElemNum)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Lose Elem"))
+		return false;
+	}
+	return true;
+}
 
 void FRoadGeneratorSubsystemTest::GetTests(TArray<FString>& OutBeautifiedNames, TArray<FString>& OutTestCommands) const
 {
@@ -140,7 +162,8 @@ bool FRoadGeneratorSubsystemTest::RunTest(const FString& Parameters)
 		//函数要求不包含重复值，无重复断点测试用例
 		for (int i = 0; i < ContinuousIndexSeriesTestCase.Num(); ++i)
 		{
-			bool bAC = TestGetContinuousIndexSeries(TestingTarget, ContinuousIndexSeriesTestCase[i].Breakpoints, ContinuousIndexSeriesTestCase[i].StartIndex,
+			bool bAC = TestGetContinuousIndexSeries(TestingTarget, ContinuousIndexSeriesTestCase[i].Breakpoints,
+			                                        ContinuousIndexSeriesTestCase[i].StartIndex,
 			                                        ContinuousIndexSeriesTestCase[i].EndIndex);
 			bPassAllTest &= bAC;
 			if (!bAC)
@@ -150,6 +173,55 @@ bool FRoadGeneratorSubsystemTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	//TestFor InsertElementsAtIndex()
+	{
+		/*TArray<FString> TargetArray0{"a", "b", "c", "d", "e", "f"};
+		TPair<int32, TArray<FString>> InsertElem0{0, TArray<FString>{"0a", "1a", "2a"}};
+		TPair<int32, TArray<FString>> InsertElem1{4, TArray<FString>{"0d", "1d"}};
+		TPair<int32, TArray<FString>> InsertElem2{5, TArray<FString>{"0f", "1f", "2f"}};
+		TMap<int32, TArray<FString>> InsertArray0{InsertElem0, InsertElem1, InsertElem2};
+		if (!TestInsertElementsAtIndex(TestingTarget, TargetArray0, InsertArray0))
+		{
+			AddError("[InsertElementsAtIndex] Case0 Failed");
+			bPassAllTest &= false;
+		}*/
+
+		TArray<FTransform> TargetArray1{
+			FTransform(FRotator(0, 0, 0), FVector(0.0), FVector(0.0)),
+			FTransform(FRotator(90, 0, 0), FVector(1.0), FVector(0.0)),
+			FTransform(FRotator(0, 90, 0), FVector(2.0), FVector(0.0)),
+			FTransform(FRotator(0, 0, 90), FVector(3.0), FVector(0.0))
+		};
+		TPair<int32, TArray<FTransform>> InsertElem3{
+			0,
+			TArray<FTransform>{
+				FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(1.0)),
+				FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(2.0)),
+				FTransform(FRotator(0, 0, 90), FVector(0.0), FVector(3.0))
+			}
+		};
+		TPair<int32, TArray<FTransform>> InsertElem4{
+			2,
+			TArray<FTransform>{
+				FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(1.0)),
+				FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(2.0)),
+				FTransform(FRotator(90, 0, 0), FVector(2.0), FVector(3.0))
+			}
+		};
+		TPair<int32, TArray<FTransform>> InsertElem5{
+			3,
+			TArray<FTransform>{
+				FTransform(FRotator(0, 90, 0), FVector(3.0), FVector(1.0)),
+				FTransform(FRotator(0, 90, 0), FVector(3.0), FVector(2.0))
+			}
+		};
+		TMap<int32, TArray<FTransform>> InsertArray1{InsertElem3, InsertElem4, InsertElem5};
+		if (!TestInsertElementsAtIndex(TestingTarget, TargetArray1, InsertArray1))
+		{
+			AddError("[InsertElementsAtIndex] Case1 Failed");
+			bPassAllTest &= false;
+		}
+	}
 	return bPassAllTest;
 }
 #endif
