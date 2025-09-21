@@ -563,10 +563,14 @@ void URoadGeneratorSubsystem::GenerateRoads()
 		{
 			ContinuousSegmentsGroups.Emplace(AllSegmentsIndex);
 		}
+
 		//交叉坐标也需要进行拆分，附着到最近的样条上
+		//对应ContinuousSegmentsGroup的二维序号和是否为前缀
+		TMultiMap<int32, FConnectionInsertInfo> SegmentGroupToConnectionToHead;
 		//TMultiMap<FIntersectionSegment, uint32> ConnectionToPotentialSegments;
 		USplineComponent* TargetSplinePtr = SingleSpline.Pin().Get();
-		TArray<FConnectionInsertInfo> AllInsertInfo;
+
+		//TArray<FConnectionInsertInfo> AllInsertInfo;
 		for (const FIntersectionSegment& IntersectionSegment : RoadIntersectionConnectionInfo)
 		{
 			FBox2D BoxOfConnection(ForceInit);
@@ -598,13 +602,20 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				}
 			}
 			//所属Segment保存在0位置
-			AllInsertInfo.Emplace(FindInsertIndexInExistedContinuousSegments(
+			FConnectionInsertInfo InsertInfo = FindInsertIndexInExistedContinuousSegments(
 				ContinuousSegmentsGroups, AllSegmentOnSpline,
-				PotentialConnection[0].GetGlobalIndex(), IntersectionSegment.IntersectionEndPointWS));
+				PotentialConnection[0].GetGlobalIndex(), IntersectionSegment.IntersectionEndPointWS);
+			float DisOfConnectionOnSpline = TargetSplinePtr->GetDistanceAlongSplineAtLocation(
+				IntersectionSegment.IntersectionEndPointWS, ESplineCoordinateSpace::World);
+			FTransform ConnectionTransform = TargetSplinePtr->GetTransformAtDistanceAlongSpline(
+				DisOfConnectionOnSpline, ESplineCoordinateSpace::World);
+			InsertInfo.ConnectionTrans=ConnectionTransform;
+			SegmentGroupToConnectionToHead.Emplace(
+				InsertInfo.GroupIndex, InsertInfo);
 			//不要直接在这里插入，会破坏上面的算法
 		}
-		
-		for (int32 i =0;i<AllInsertInfo.Num();++i)
+
+		/*for (int32 i = 0; i < AllInsertInfo.Num(); ++i)
 		{
 			uint32 ConnectionSegmentIndex = UINT32_MAX;
 			if (AllInsertInfo[i].GroupIndex != 0 || !AllInsertInfo[i].bConnectToGroupHead)
@@ -618,7 +629,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				                              : ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex].Last(0);
 			FSplinePolyLineSegment InsertNeighbour = IndexToAllSegments[InsertNeighbourIndex];
 			float DisOfConnectionOnSpline = TargetSplinePtr->GetDistanceAlongSplineAtLocation(
-				 RoadIntersectionConnectionInfo[i].IntersectionEndPointWS, ESplineCoordinateSpace::World);
+				RoadIntersectionConnectionInfo[i].IntersectionEndPointWS, ESplineCoordinateSpace::World);
 			FTransform ConnectionTransform = TargetSplinePtr->GetTransformAtDistanceAlongSpline(
 				DisOfConnectionOnSpline, ESplineCoordinateSpace::World);
 			FTransform SegmentStartTransform = AllInsertInfo[i].bConnectToGroupHead
@@ -630,19 +641,20 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			FSplinePolyLineSegment ConnectionSegment(SingleSpline, ConnectionSegmentIndex,
 			                                         InsertNeighbour.LastSegmentIndex, SegmentStartTransform,
 			                                         SegmentEndTransform);
-			IndexToAllSegments.Emplace(ConnectionSegment.GetGlobalIndex(),ConnectionSegment);
+			IndexToAllSegments.Emplace(ConnectionSegment.GetGlobalIndex(), ConnectionSegment);
 			int32 InsertIndexInGroup = AllInsertInfo[i].bConnectToGroupHead
-				                         ? 0
-				                         : ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex].Num();
+				                           ? 0
+				                           : ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex].Num();
 			//插入0时报错
-			TArray<uint32>& TargetSegmentsGroup=ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex];
-			TargetSegmentsGroup.Reserve(TargetSegmentsGroup.Num()+1);
-			TargetSegmentsGroup.Insert(ConnectionSegment.GetGlobalIndex(),InsertIndexInGroup);
-		}
+			TArray<uint32>& TargetSegmentsGroup = ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex];
+			TargetSegmentsGroup.Reserve(TargetSegmentsGroup.Num() + 1);
+			TargetSegmentsGroup.Insert(ConnectionSegment.GetGlobalIndex(), InsertIndexInGroup);
+		}*/
 
 		//创建Actor负载信息
-		for (auto ContinuousSegments : ContinuousSegmentsGroups)
+		for (int32 i = 0; i < ContinuousSegmentsGroups.Num(); ++i)
 		{
+			TArray<uint32>& ContinuousSegments = ContinuousSegmentsGroups[i];
 			TArray<FTransform> RoadSegmentTransforms;
 			FTransform StartTransform = IndexToAllSegments[ContinuousSegments[0]].StartTransform;
 			RoadSegmentTransforms.Emplace(StartTransform);
@@ -650,8 +662,30 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			{
 				RoadSegmentTransforms.Emplace(IndexToAllSegments[ContinuousSegments[j]].EndTransform);
 			}
-			//把最后一段的Segment放进去
-
+			//把衔接位置信息放进去
+			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
+			if (SegmentGroupToConnectionToHead.Contains(i))
+			{
+				TArray<FConnectionInsertInfo> Connections;
+				SegmentGroupToConnectionToHead.MultiFind(i,Connections);
+				if (!Connections.IsEmpty())
+				{
+					for (const auto& Connection : Connections)
+					{
+						if (Connection.bConnectToGroupHead==true)
+						{
+							RoadWithConnectInfo.bHasHeadConnection = true;
+							RoadWithConnectInfo.HeadConnectionTrans=Connection.ConnectionTrans;
+						}
+						else
+						{
+							RoadWithConnectInfo.bHasTailConnection = true;
+							RoadWithConnectInfo.TailConnectionTrans=Connection.ConnectionTrans;
+						}
+					}
+				}
+			}
+			
 			FString ActorLabel = FString::Printf(TEXT("RoadActor%d"), RoadCounter);
 			AActor* RoadActor = UEditorComponentUtilities::SpawnEmptyActor(ActorLabel, StartTransform);
 			ensureAlways(nullptr!=RoadActor);
@@ -663,8 +697,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			URoadMeshGenerator* GeneratorComp = Cast<URoadMeshGenerator>(GeneratorCompTemp);
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetReferenceSpline(SingleSpline);
-			GeneratorComp->SetRoadPathTransform(RoadSegmentTransforms);
-			//	GeneratorComp->SetConnectionInfo(RoadIntersectionConnectionInfo);
+			//GeneratorComp->SetRoadPathTransform(RoadSegmentTransforms);
+			GeneratorComp->SetRoadInfo(RoadWithConnectInfo);
 			RoadMeshGenerators.Emplace(GeneratorComp);
 			RoadCounter++;
 		}

@@ -222,3 +222,31 @@ protected:
 		return Rectangle2DCoords;
 	}
 };
+
+struct FRoadSegmentsGroup
+{
+	FRoadSegmentsGroup()
+	{
+	};
+
+	FRoadSegmentsGroup(const TArray<FTransform>& InContinuousSegmentsTrans):
+		ContinuousSegmentsTrans(InContinuousSegmentsTrans)
+	{
+	};
+
+	FRoadSegmentsGroup(const TArray<FTransform>& InContinuousSegmentsTrans, bool bInHasHeadConnection,
+	                   const FTransform& InHeadConnectionTrans, bool bInHasTailConnection,
+	                   const FTransform& InTailConnectionTrans): ContinuousSegmentsTrans(InContinuousSegmentsTrans),
+	                                                             bHasHeadConnection(bInHasHeadConnection),
+	                                                             HeadConnectionTrans(InHeadConnectionTrans),
+	                                                             bHasTailConnection(bInHasTailConnection),
+	                                                             TailConnectionTrans(InTailConnectionTrans)
+	{
+	};
+
+	TArray<FTransform> ContinuousSegmentsTrans;
+	bool bHasHeadConnection = false;
+	FTransform HeadConnectionTrans;
+	bool bHasTailConnection = false;
+	FTransform TailConnectionTrans;
+};

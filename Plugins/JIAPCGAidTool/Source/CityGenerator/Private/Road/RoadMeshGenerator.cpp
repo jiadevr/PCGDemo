@@ -74,9 +74,21 @@ void URoadMeshGenerator::SetRoadType(ELaneType InRoadType)
 	}
 }
 
-void URoadMeshGenerator::SetConnectionInfo(const TArray<FIntersectionSegment>& InConnectionInfo)
+void URoadMeshGenerator::SetRoadInfo(const FRoadSegmentsGroup& InRoadWithConnect)
 {
-	Connections = InConnectionInfo;
+	int32 SweepPathLength=InRoadWithConnect.ContinuousSegmentsTrans.Num();
+	SweepPathLength+=InRoadWithConnect.bHasHeadConnection?1:0;
+	SweepPathLength+=InRoadWithConnect.bHasTailConnection?1:0;
+	SweepPointsTrans.Reserve(SweepPathLength);
+	if (InRoadWithConnect.bHasHeadConnection)
+	{
+		SweepPointsTrans.Emplace(InRoadWithConnect.HeadConnectionTrans);
+	}
+	SweepPointsTrans.Append(InRoadWithConnect.ContinuousSegmentsTrans);
+	if (InRoadWithConnect.bHasTailConnection)
+	{
+		SweepPointsTrans.Emplace(InRoadWithConnect.TailConnectionTrans);
+	}
 }
 
 bool URoadMeshGenerator::GenerateMesh()
@@ -85,7 +97,7 @@ bool URoadMeshGenerator::GenerateMesh()
 	{
 		return false;
 	}
-	MergeConnectionsIntoSweepPoints();
+	//MergeConnectionsIntoSweepPoints();
 	for (int32 i = 1; i < SweepPointsTrans.Num(); ++i)
 	{
 		FVector CenterLocation = (SweepPointsTrans[i - 1].GetLocation() + SweepPointsTrans[i].GetLocation()) / 2.0;
@@ -109,7 +121,7 @@ void URoadMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshCom
 	}
 }
 
-void URoadMeshGenerator::MergeConnectionsIntoSweepPoints()
+/*void URoadMeshGenerator::MergeConnectionsIntoSweepPoints()
 {
 	if (Connections.IsEmpty() || !ReferenceSpline.IsValid() || nullptr == this->GetOwner())
 	{
@@ -144,4 +156,4 @@ void URoadMeshGenerator::MergeConnectionsIntoSweepPoints()
 	{
 		SweepPointsTrans.Append(ConnectPointsTrans);
 	}
-}
+}*/

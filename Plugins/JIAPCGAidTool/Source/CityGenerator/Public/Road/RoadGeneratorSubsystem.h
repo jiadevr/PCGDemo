@@ -14,12 +14,11 @@ class USplineComponent;
 
 struct FConnectionInsertInfo
 {
-	
 	FConnectionInsertInfo(){};
 	int32 GroupIndex = -1;
 	bool bConnectToGroupHead = true;
 	//连接到起点一定在起点前，连接到终点一定在终点后
-	//bool bConnectToStart = true;
+	FTransform ConnectionTrans;
 };
 /**
  * 该类主要实现以下内容：

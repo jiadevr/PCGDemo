@@ -31,7 +31,7 @@ public:
 
 	void SetRoadType(ELaneType InRoadType);
 
-	void SetConnectionInfo(const TArray<FIntersectionSegment>& InConnectionInfo);
+	void SetRoadInfo(const FRoadSegmentsGroup & InRoadWithConnect);
 	
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
