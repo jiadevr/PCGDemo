@@ -30,6 +30,17 @@ void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FInter
 	IntersectionsData = InIntersectionData;
 }
 
+bool UIntersectionMeshGenerator::GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline,
+                                                        TArray<FIntersectionSegment>& OutConnections)
+{
+	if (!ConnectionLocations.Contains(InOwnerSpline))
+	{
+		return false;
+	}
+	ConnectionLocations.MultiFind(InOwnerSpline, OutConnections);
+	return !OutConnections.IsEmpty();
+}
+
 bool UIntersectionMeshGenerator::GenerateMesh()
 {
 	AActor* Owner = GetOwner();
@@ -154,6 +165,16 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			//左侧蓝线
 			DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
 			                          true);
+		}
+
+		FVector2D ConnectionLoc = CurrentSegmentEndPoint2D - VectorToCenter * SegmentScalar;
+		FIntersectionSegment RoadInterfaceSegment = IntersectionsData[i];
+		RoadInterfaceSegment.IntersectionEndPointWS = FVector(ConnectionLoc, 0.0);
+		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
+		if (bShowDebug)
+		{
+			//连接点
+			DrawDebugBox(GetWorld(), FVector(ConnectionLoc, 0.0), FVector(100.0f), FColor::Blue, true, -1, 0, 10.0f);
 		}
 	}
 	//由于传入节点已经排序，线段只会和相邻的相交，单循环可以解决

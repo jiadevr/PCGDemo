@@ -35,6 +35,8 @@ public:
 		return OccupiedBox;
 	}
 
+	bool GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline,TArray<FIntersectionSegment>& OutConnections);
+	
 	/**
 	 * IMeshGeneratorInterface接口，根据类内的IntersectionsData数据调用同一Owner下挂载的UDynamicMeshComponent创建路口Mesh
 	 * @return 返回创建Mesh是否成功 
@@ -48,6 +50,7 @@ public:
 
 	//这个函数有问题，看后续还要不要维护
 	//int32 GetOverlapSegmentOnGivenSpline(TWeakObjectPtr<USplineComponent> TargetSpline);
+
 protected:
 	/**
 	 * 核心函数，创建交点二维截面
@@ -69,4 +72,6 @@ protected:
 	 */
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	TArray<FIntersectionSegment> IntersectionsData;
+	
+	TMultiMap<TWeakObjectPtr<USplineComponent>,FIntersectionSegment>ConnectionLocations;
 };

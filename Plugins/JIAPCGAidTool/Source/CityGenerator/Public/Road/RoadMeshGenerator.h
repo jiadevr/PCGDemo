@@ -30,6 +30,8 @@ public:
 	void SetReferenceSpline(TWeakObjectPtr<USplineComponent> InReferenceSpline);
 
 	void SetRoadType(ELaneType InRoadType);
+
+	void SetConnectionInfo(const TArray<FIntersectionSegment>& InConnectionInfo);
 	
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
@@ -43,4 +45,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	FLaneMeshInfo RoadInfo;
+
+	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
+	TArray<FIntersectionSegment> Connections;
+
+	void MergeConnectionsIntoSweepPoints();
 };

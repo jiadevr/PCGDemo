@@ -529,8 +529,9 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				AllSegmentsIndex.Emplace(Segment.GetGlobalIndex());
 			}
 		}
-		//取交叉路口占用的
+		//取交叉路口占用的，同时把交接路口取出来
 		TArray<uint32> OccupiedSegmentsIndex;
+		TArray<FIntersectionSegment> RoadIntersectionConnectionInfo;
 		if (IntersectionCompOnSpline.Contains(SingleSpline))
 		{
 			TSet<TWeakObjectPtr<UIntersectionMeshGenerator>> IntersectionGensOnSpline =
@@ -548,6 +549,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 						OccupiedSegmentsIndex.Emplace(PolyLineSegment.GetGlobalIndex());
 					}
 				}
+				//所在样条上**所有**的交叉坐标
+				MeshGeneratorPtr->GetRoadConnectionPoint(SingleSpline, RoadIntersectionConnectionInfo);
 			}
 		}
 		TArray<TArray<uint32>> ContinuousSegmentsGroups;
@@ -560,6 +563,83 @@ void URoadGeneratorSubsystem::GenerateRoads()
 		{
 			ContinuousSegmentsGroups.Emplace(AllSegmentsIndex);
 		}
+		//交叉坐标也需要进行拆分，附着到最近的样条上
+		//TMultiMap<FIntersectionSegment, uint32> ConnectionToPotentialSegments;
+		USplineComponent* TargetSplinePtr = SingleSpline.Pin().Get();
+		TArray<FConnectionInsertInfo> AllInsertInfo;
+		for (const FIntersectionSegment& IntersectionSegment : RoadIntersectionConnectionInfo)
+		{
+			FBox2D BoxOfConnection(ForceInit);
+			BoxOfConnection += FVector2D(IntersectionSegment.IntersectionEndPointWS);
+			BoxOfConnection = BoxOfConnection.ExpandBy(10.0f);
+			TArray<FSplinePolyLineSegment> PotentialConnection;
+			SplineQuadTree.GetElements(BoxOfConnection, PotentialConnection);
+			if (PotentialConnection.IsEmpty())
+			{
+				continue;
+			}
+			if (PotentialConnection.Num() != 1)
+			{
+				uint32 OwnerSegmentIndex = 0;
+				float MinDistance = FLT_MAX;
+				for (const auto& Segment : PotentialConnection)
+				{
+					FVector SegmentCenter = Segment.StartTransform.GetLocation() + Segment.EndTransform.GetLocation();
+					float DisCenterToConnection = FVector::DistSquared2D(
+						SegmentCenter, IntersectionSegment.IntersectionEndPointWS);
+					if (DisCenterToConnection < MinDistance)
+					{
+						OwnerSegmentIndex = Segment.GetGlobalIndex();
+					}
+				}
+				if (OwnerSegmentIndex != 0)
+				{
+					PotentialConnection.Swap(0, OwnerSegmentIndex);
+				}
+			}
+			//所属Segment保存在0位置
+			AllInsertInfo.Emplace(FindInsertIndexInExistedContinuousSegments(
+				ContinuousSegmentsGroups, AllSegmentOnSpline,
+				PotentialConnection[0].GetGlobalIndex(), IntersectionSegment.IntersectionEndPointWS));
+			//不要直接在这里插入，会破坏上面的算法
+		}
+		
+		for (int32 i =0;i<AllInsertInfo.Num();++i)
+		{
+			uint32 ConnectionSegmentIndex = UINT32_MAX;
+			if (AllInsertInfo[i].GroupIndex != 0 || !AllInsertInfo[i].bConnectToGroupHead)
+			{
+				ConnectionSegmentIndex = AllInsertInfo[i].bConnectToGroupHead
+					                         ? ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex][0] - 1
+					                         : ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex].Last() + 1;
+			}
+			uint32 InsertNeighbourIndex = AllInsertInfo[i].bConnectToGroupHead
+				                              ? ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex][0]
+				                              : ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex].Last(0);
+			FSplinePolyLineSegment InsertNeighbour = IndexToAllSegments[InsertNeighbourIndex];
+			float DisOfConnectionOnSpline = TargetSplinePtr->GetDistanceAlongSplineAtLocation(
+				 RoadIntersectionConnectionInfo[i].IntersectionEndPointWS, ESplineCoordinateSpace::World);
+			FTransform ConnectionTransform = TargetSplinePtr->GetTransformAtDistanceAlongSpline(
+				DisOfConnectionOnSpline, ESplineCoordinateSpace::World);
+			FTransform SegmentStartTransform = AllInsertInfo[i].bConnectToGroupHead
+				                                   ? ConnectionTransform
+				                                   : InsertNeighbour.EndTransform;
+			FTransform SegmentEndTransform = AllInsertInfo[i].bConnectToGroupHead
+				                                 ? InsertNeighbour.StartTransform
+				                                 : ConnectionTransform;
+			FSplinePolyLineSegment ConnectionSegment(SingleSpline, ConnectionSegmentIndex,
+			                                         InsertNeighbour.LastSegmentIndex, SegmentStartTransform,
+			                                         SegmentEndTransform);
+			IndexToAllSegments.Emplace(ConnectionSegment.GetGlobalIndex(),ConnectionSegment);
+			int32 InsertIndexInGroup = AllInsertInfo[i].bConnectToGroupHead
+				                         ? 0
+				                         : ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex].Num();
+			//插入0时报错
+			TArray<uint32>& TargetSegmentsGroup=ContinuousSegmentsGroups[AllInsertInfo[i].GroupIndex];
+			TargetSegmentsGroup.Reserve(TargetSegmentsGroup.Num()+1);
+			TargetSegmentsGroup.Insert(ConnectionSegment.GetGlobalIndex(),InsertIndexInGroup);
+		}
+
 		//创建Actor负载信息
 		for (auto ContinuousSegments : ContinuousSegmentsGroups)
 		{
@@ -584,6 +664,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetReferenceSpline(SingleSpline);
 			GeneratorComp->SetRoadPathTransform(RoadSegmentTransforms);
+			//	GeneratorComp->SetConnectionInfo(RoadIntersectionConnectionInfo);
 			RoadMeshGenerators.Emplace(GeneratorComp);
 			RoadCounter++;
 		}
@@ -878,11 +959,10 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 			{
 				//RightIndex++;
 				//没有发现截取子数组的函数，使用FMemory::Memcpy()
-				IndexSeries.SetNumUninitialized(AllSegmentIndex.Num() - RightIndex);
+				IndexSeries.SetNum(AllSegmentIndex.Num() - RightIndex);
 				FMemory::Memcpy(IndexSeries.GetData(),
-				                reinterpret_cast<const uint8*>(AllSegmentIndex.GetData()) + RightIndex * sizeof(int32),
-				                (AllSegmentIndex.Num() - RightIndex) * sizeof(int32)
-				);
+				                AllSegmentIndex.GetData() + RightIndex,
+				                (AllSegmentIndex.Num() - RightIndex) * sizeof(uint32));
 				break;
 			}
 			//此时回归正常情况两者指向数字不同，收缩窗口
@@ -895,6 +975,79 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 		Results.Emplace(IndexSeries);
 	}
 	return Results;
+}
+
+FConnectionInsertInfo URoadGeneratorSubsystem::FindInsertIndexInExistedContinuousSegments(
+	TArray<TArray<uint32>>& InContinuousSegmentsGroups, const TArray<FSplinePolyLineSegment>& InAllSegmentOnSpline,
+	const uint32 OwnerSegmentID, const FVector& PointTransWS)
+{
+	FConnectionInsertInfo Result;
+	//利用连续特性,寻找是不是在端点
+	if (OwnerSegmentID < InContinuousSegmentsGroups[0][0])
+	{
+		Result.GroupIndex = 0;
+		Result.bConnectToGroupHead = true;
+	}
+	else if (OwnerSegmentID > InContinuousSegmentsGroups.Last(0).Last(0))
+	{
+		Result.GroupIndex = InContinuousSegmentsGroups.Num() - 1;
+		Result.bConnectToGroupHead = false;
+	}
+	else
+	{
+		int32 IndexDistance = INT_MAX;
+		uint32 NeighborSegmentIndex = UINT_MAX;
+		bool bChoiceHead = true;
+		for (int32 i = 1; i < InContinuousSegmentsGroups.Num(); ++i)
+		{
+			//@TODO：可以使用二分查找优化
+			//遍历寻找中间位置
+			if (InContinuousSegmentsGroups[i - 1].Last() < OwnerSegmentID && OwnerSegmentID <=
+				InContinuousSegmentsGroups[i][0])
+			{
+				uint32 IndexGapToLastEnd = OwnerSegmentID - InContinuousSegmentsGroups[i - 1].Last();
+				uint32 IndexGapToNextStart = InContinuousSegmentsGroups[i][0] - OwnerSegmentID;
+				//距离两端序号距离一样
+				if (IndexGapToLastEnd == IndexGapToNextStart)
+				{
+					FVector LocOfLastEnd = InAllSegmentOnSpline[InContinuousSegmentsGroups[i - 1].Last()].EndTransform.
+						GetLocation();
+					float DisToLastEnd = FVector::DistSquared2D(LocOfLastEnd, PointTransWS);
+					FVector LocOfNextStart = InAllSegmentOnSpline[InContinuousSegmentsGroups[i][0]].EndTransform.
+						GetLocation();
+					float DisToNestStart = FVector::DistSquared2D(LocOfNextStart, PointTransWS);
+					//理论上不存在等于
+					if (DisToLastEnd <= DisToNestStart)
+					{
+						Result.GroupIndex = i - 1;
+						Result.bConnectToGroupHead = false;
+						break;
+					}
+					else
+					{
+						Result.GroupIndex = i;
+						Result.bConnectToGroupHead = true;
+						break;
+					}
+				}
+				//距离上一段终点更近
+				else if (IndexGapToLastEnd < IndexGapToNextStart)
+				{
+					Result.GroupIndex = i - 1;
+					Result.bConnectToGroupHead = false;
+					break;
+				}
+				//距离当前段起点更近
+				else
+				{
+					Result.GroupIndex = i;
+					Result.bConnectToGroupHead = true;
+					break;
+				}
+			}
+		}
+	}
+	return Result;
 }
 
 TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponent* TargetSpline)

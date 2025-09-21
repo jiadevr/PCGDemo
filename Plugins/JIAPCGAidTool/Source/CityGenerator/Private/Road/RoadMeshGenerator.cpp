@@ -3,6 +3,7 @@
 
 #include "Road/RoadMeshGenerator.h"
 #include "Components/DynamicMeshComponent.h"
+#include "Components/SplineComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -73,12 +74,18 @@ void URoadMeshGenerator::SetRoadType(ELaneType InRoadType)
 	}
 }
 
+void URoadMeshGenerator::SetConnectionInfo(const TArray<FIntersectionSegment>& InConnectionInfo)
+{
+	Connections = InConnectionInfo;
+}
+
 bool URoadMeshGenerator::GenerateMesh()
 {
-	if (SweepPointsTrans.IsEmpty())
+	if (SweepPointsTrans.IsEmpty() && Connections.IsEmpty())
 	{
 		return false;
 	}
+	MergeConnectionsIntoSweepPoints();
 	for (int32 i = 1; i < SweepPointsTrans.Num(); ++i)
 	{
 		FVector CenterLocation = (SweepPointsTrans[i - 1].GetLocation() + SweepPointsTrans[i].GetLocation()) / 2.0;
@@ -99,5 +106,42 @@ void URoadMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshCom
 	if (InMeshComponent != nullptr)
 	{
 		MeshComponent = TWeakObjectPtr<UDynamicMeshComponent>(InMeshComponent);
+	}
+}
+
+void URoadMeshGenerator::MergeConnectionsIntoSweepPoints()
+{
+	if (Connections.IsEmpty() || !ReferenceSpline.IsValid() || nullptr == this->GetOwner())
+	{
+		return;
+	}
+	UE_LOG(LogTemp, Display, TEXT("[MergePath] %s Revecive %d Connections"), *this->GetOwner()->GetActorLabel(),
+	       Connections.Num());
+	TArray<FTransform> ConnectPointsTrans;
+	for (const FIntersectionSegment& Connection : Connections)
+	{
+		const FVector ConnectPointLoc = Connection.IntersectionEndPointWS;
+		USplineComponent* PathSpline = ReferenceSpline.Pin().Get();
+		float SplineDistance = PathSpline->GetDistanceAlongSplineAtLocation(
+			ConnectPointLoc, ESplineCoordinateSpace::World);
+		FTransform ConnectTrans = PathSpline->GetTransformAtDistanceAlongSpline(
+			SplineDistance, ESplineCoordinateSpace::World);
+		ConnectPointsTrans.Emplace(ConnectTrans);
+	}
+	if (!SweepPointsTrans.IsEmpty())
+	{
+		FVector StartLocation = SweepPointsTrans[0].GetLocation();
+		FVector EndLocation = SweepPointsTrans.Last(0).GetLocation();
+		for (const auto& ConnectionTrans : ConnectPointsTrans)
+		{
+			float DistanceToStart = FVector::Dist2D(ConnectionTrans.GetLocation(), StartLocation);
+			float DistanceToEnd = FVector::Dist2D(ConnectionTrans.GetLocation(), EndLocation);
+			int32 InsertIndex = DistanceToStart < DistanceToEnd ? 0 : SweepPointsTrans.Num();
+			SweepPointsTrans.Insert(ConnectionTrans, InsertIndex);
+		}
+	}
+	else
+	{
+		SweepPointsTrans.Append(ConnectPointsTrans);
 	}
 }

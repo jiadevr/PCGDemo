@@ -12,6 +12,15 @@ class URoadMeshGenerator;
 class UIntersectionMeshGenerator;
 class USplineComponent;
 
+struct FConnectionInsertInfo
+{
+	
+	FConnectionInsertInfo(){};
+	int32 GroupIndex = -1;
+	bool bConnectToGroupHead = true;
+	//连接到起点一定在起点前，连接到终点一定在终点后
+	//bool bConnectToStart = true;
+};
 /**
  * 该类主要实现以下内容：
  * 1.承接CityGenerator类中用户输入的Spline信息，将其转换为PolyLineSegment并计算交点
@@ -75,7 +84,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = false, float Thickness = 30.0f);
-	
+
 	/**
 	 * 模板函数，用于ResampleSpline函数中长直线段细分数据加入，以非POD（不能使用FMemoryCopy）为处理对象
 	 * 应当为Protected，为了满足单元测试需求设置为Public
@@ -102,7 +111,7 @@ protected:
 	 * @param TargetSpline 需要更新数据的样条
 	 */
 	void UpdateSplineSegments(USplineComponent* TargetSpline);
-	
+
 	//这个值50分段大概在1000cm
 	const float PolyLineSampleDistance = 200.0f;
 
@@ -130,7 +139,7 @@ protected:
 	 * 用于加速样条交点计算的四叉树
 	 */
 	TQuadTree<FSplinePolyLineSegment> SplineQuadTree{FBox2D()};
-	
+
 	/**
 	 * 使用四叉树返回交点处重叠的Segment信息，用于道路切割
 	 * @param TargetIntersection 交点对象引用，需要交点对象的GetOccupiedBox
@@ -138,7 +147,7 @@ protected:
 	 */
 	TArray<FSplinePolyLineSegment> GetInteractionOccupiedSegments(
 		TWeakObjectPtr<UIntersectionMeshGenerator> TargetIntersection) const;
-	
+
 	/**
 	 * 生成的路口Actor上挂载的Component数组
 	 */
@@ -166,9 +175,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoads();
-	
+
 	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
-	
+
 	/**
 	 * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
 	 * @param TargetSpline 目标样条线
@@ -212,6 +221,13 @@ public:
 	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);
 
 protected:
+
+
+	FConnectionInsertInfo FindInsertIndexInExistedContinuousSegments(TArray<TArray<uint32>>& InContinuousSegmentsGroups,
+	                                                                 const TArray<FSplinePolyLineSegment>&
+	                                                                 InAllSegmentOnSpline,
+	                                                                 const uint32 OwnerSegmentID,
+	                                                                 const FVector& PointTransWS);
 	/**
 	 * 道路枚举名称-道路构建信息表，在本类的Init中初始化
 	 */
