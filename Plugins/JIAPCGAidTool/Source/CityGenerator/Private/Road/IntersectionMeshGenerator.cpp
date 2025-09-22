@@ -64,7 +64,7 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
 			FString::Printf(
-				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
+				TEXT("[ERROR]%s Create Intersection Failed,Extrude Is Not Defined"), *Owner->GetActorLabel()));
 		return false;
 	}
 	if (CVarOnlyDebugPoint.GetValueOnGameThread())
@@ -80,8 +80,8 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 	FGeometryScriptCalculateNormalsOptions CalculateOptions;
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
 	                                                                 CalculateOptions);
-	UNotifyUtilities::ShowPopupMsgAtCorner(
-		FString::Printf(TEXT("%s Generate Intersection Finished!"), *Owner->GetActorLabel()));
+	/*UNotifyUtilities::ShowPopupMsgAtCorner(
+		FString::Printf(TEXT("%s Generate Intersection Finished!"), *Owner->GetActorLabel()));*/
 	return true;
 }
 

@@ -23,11 +23,11 @@ public:
 	FSplinePolyLineSegment(TWeakObjectPtr<USplineComponent> InSplineRef, uint32 InSegmentIndex,
 	                       uint32 InLastSegmentIndex,
 	                       const FTransform& InStartTransform,
-	                       const FTransform& InEndTransform): OwnerSpline(InSplineRef),
-	                                                          SegmentIndex(InSegmentIndex),
-	                                                          LastSegmentIndex(InLastSegmentIndex),
-	                                                          StartTransform(InStartTransform),
-	                                                          EndTransform(InEndTransform)
+	                       const FTransform& InEndTransform) : OwnerSpline(InSplineRef),
+	                                                           SegmentIndex(InSegmentIndex),
+	                                                           LastSegmentIndex(InLastSegmentIndex),
+	                                                           StartTransform(InStartTransform),
+	                                                           EndTransform(InEndTransform)
 	{
 		GlobalIndex = SegmentGlobalIndex++;
 	};
@@ -98,10 +98,10 @@ public:
 
 	FSplineIntersection(const TArray<TWeakObjectPtr<USplineComponent>>& InIntersectedSplines,
 	                    const TArray<uint32>& InIntersectedSegmentIndex,
-	                    const FVector& InIntersectionPoint): IntersectedSplines(
-		                                                         InIntersectedSplines),
-	                                                         IntersectedSegmentIndex(InIntersectedSegmentIndex),
-	                                                         WorldLocation(InIntersectionPoint)
+	                    const FVector& InIntersectionPoint) : IntersectedSplines(
+		                                                          InIntersectedSplines),
+	                                                          IntersectedSegmentIndex(InIntersectedSegmentIndex),
+	                                                          WorldLocation(InIntersectionPoint)
 	{
 	}
 
@@ -142,9 +142,9 @@ public:
 	};
 
 	FIntersectionSegment(TWeakObjectPtr<USplineComponent>& InOwnerSplines, const FVector& InIntersectionEndPointWS,
-	                     bool bInIsFlowIn, float InRoadWidth): OwnerSpline(InOwnerSplines),
-	                                                           IntersectionEndPointWS(InIntersectionEndPointWS),
-	                                                           bIsFlowIn(bInIsFlowIn), RoadWidth(InRoadWidth)
+	                     bool bInIsFlowIn, float InRoadWidth) : OwnerSpline(InOwnerSplines),
+	                                                            IntersectionEndPointWS(InIntersectionEndPointWS),
+	                                                            bIsFlowIn(bInIsFlowIn), RoadWidth(InRoadWidth)
 	{
 	}
 
@@ -214,7 +214,8 @@ protected:
 	{
 		TArray<FVector2D> Rectangle2DCoords;
 		Rectangle2DCoords.SetNum(4);
-		TArray<FVector2D> UnitShape{{0.5, 0.5}, {0.5, -0.5}, {-0.5, -0.5}, {-0.5, 0.5}};
+		//逆时针顺序
+		TArray<FVector2D> UnitShape{{0.5, 0.5}, {-0.5, 0.5}, {-0.5, -0.5}, {0.5, -0.5}};
 		for (int i = 0; i < UnitShape.Num(); ++i)
 		{
 			Rectangle2DCoords[i] = FVector2D(Width, Height) * UnitShape[i];
@@ -223,30 +224,43 @@ protected:
 	}
 };
 
+/**
+ * 道路生成时的信息结构体，分为连续分段Transform和连接点两部分，其中连接点可选，需要对应填入bool和Transform信息
+ */
 struct FRoadSegmentsGroup
 {
 	FRoadSegmentsGroup()
 	{
 	};
 
-	FRoadSegmentsGroup(const TArray<FTransform>& InContinuousSegmentsTrans):
+	FRoadSegmentsGroup(const TArray<FTransform>& InContinuousSegmentsTrans) :
 		ContinuousSegmentsTrans(InContinuousSegmentsTrans)
 	{
 	};
 
 	FRoadSegmentsGroup(const TArray<FTransform>& InContinuousSegmentsTrans, bool bInHasHeadConnection,
 	                   const FTransform& InHeadConnectionTrans, bool bInHasTailConnection,
-	                   const FTransform& InTailConnectionTrans): ContinuousSegmentsTrans(InContinuousSegmentsTrans),
-	                                                             bHasHeadConnection(bInHasHeadConnection),
-	                                                             HeadConnectionTrans(InHeadConnectionTrans),
-	                                                             bHasTailConnection(bInHasTailConnection),
-	                                                             TailConnectionTrans(InTailConnectionTrans)
+	                   const FTransform& InTailConnectionTrans) : ContinuousSegmentsTrans(InContinuousSegmentsTrans),
+	                                                              bHasHeadConnection(bInHasHeadConnection),
+	                                                              HeadConnectionTrans(InHeadConnectionTrans),
+	                                                              bHasTailConnection(bInHasTailConnection),
+	                                                              TailConnectionTrans(InTailConnectionTrans)
 	{
 	};
 
+	/**
+	 * 连续分段数据
+	 */
 	TArray<FTransform> ContinuousSegmentsTrans;
+
+	/**
+	 * 是否有链接到连续分段头部的路口交接信息
+	 */
 	bool bHasHeadConnection = false;
 	FTransform HeadConnectionTrans;
+	/**
+	* 是否有链接到连续分段尾部的路口交接信息
+	*/
 	bool bHasTailConnection = false;
 	FTransform TailConnectionTrans;
 };

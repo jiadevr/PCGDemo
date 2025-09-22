@@ -2,10 +2,13 @@
 
 
 #include "Road/RoadMeshGenerator.h"
+
+#include "NotifyUtilities.h"
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SplineComponent.h"
+#include "GeometryScript/MeshNormalsFunctions.h"
+#include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "Kismet/KismetSystemLibrary.h"
 
 
 // Sets default values for this component's properties
@@ -26,28 +29,18 @@ void URoadMeshGenerator::DrawDebugElemOnSweepPoint()
 		return;
 	}
 	FTransform OwnerTransform = OwnerActor->GetActorTransform();
-	if (DebugIndex < 0)
+	for (int32 i = 1; i < SweepPointsTrans.Num(); ++i)
 	{
-		for (int32 i = 0; i < SweepPointsTrans.Num(); ++i)
-		{
-			DrawDebugPoint(
-				GetWorld(), OwnerTransform.TransformPosition(SweepPointsTrans[i].GetLocation()) + FVector(0, 0, 50.0f),
-				5.0f,
-				FColor::Purple, false, 10.0f);
-			DrawDebugString(
-				GetWorld(), OwnerTransform.TransformPosition(SweepPointsTrans[i].GetLocation()) + FVector(0, 0, 60.0f),
-				FString::FromInt(i),
-				nullptr, FColor::Purple, 10.0f, false, 5.0f);
-		}
-		return;
+		FVector CenterLocation = (SweepPointsTrans[i - 1].GetLocation() + SweepPointsTrans[i].GetLocation()) / 2.0;
+		double BoxHalfLength = FVector::Dist(SweepPointsTrans[i - 1].GetLocation(), SweepPointsTrans[i].GetLocation()) /
+			2.0;
+		FVector BoxExtent(BoxHalfLength, 250.0, 10);
+		FBox DebugBox(-BoxExtent, BoxExtent);
+		FRotator BoxRotator = UKismetMathLibrary::MakeRotFromX(
+			(SweepPointsTrans[i].GetLocation() - SweepPointsTrans[i - 1].GetLocation()).GetSafeNormal());
+		FTransform DebugBoxTrans(BoxRotator, CenterLocation);
+		DrawDebugSolidBox(this->GetWorld(), DebugBox, FColor::Cyan, DebugBoxTrans, true);
 	}
-	DrawDebugPoint(GetWorld(), OwnerTransform.TransformPosition(SweepPointsTrans[DebugIndex].GetLocation()), 5.0f,
-	               FColor::Purple, false, 10.0f);
-}
-
-void URoadMeshGenerator::SetRoadPathTransform(const TArray<FTransform>& InTransforms)
-{
-	SweepPointsTrans = InTransforms;
 }
 
 void URoadMeshGenerator::SetReferenceSpline(TWeakObjectPtr<USplineComponent> InReferenceSpline)
@@ -76,9 +69,9 @@ void URoadMeshGenerator::SetRoadType(ELaneType InRoadType)
 
 void URoadMeshGenerator::SetRoadInfo(const FRoadSegmentsGroup& InRoadWithConnect)
 {
-	int32 SweepPathLength=InRoadWithConnect.ContinuousSegmentsTrans.Num();
-	SweepPathLength+=InRoadWithConnect.bHasHeadConnection?1:0;
-	SweepPathLength+=InRoadWithConnect.bHasTailConnection?1:0;
+	int32 SweepPathLength = InRoadWithConnect.ContinuousSegmentsTrans.Num();
+	SweepPathLength += InRoadWithConnect.bHasHeadConnection ? 1 : 0;
+	SweepPathLength += InRoadWithConnect.bHasTailConnection ? 1 : 0;
 	SweepPointsTrans.Reserve(SweepPathLength);
 	if (InRoadWithConnect.bHasHeadConnection)
 	{
@@ -89,28 +82,53 @@ void URoadMeshGenerator::SetRoadInfo(const FRoadSegmentsGroup& InRoadWithConnect
 	{
 		SweepPointsTrans.Emplace(InRoadWithConnect.TailConnectionTrans);
 	}
+	bIsLocalSpace = false;
 }
 
 bool URoadMeshGenerator::GenerateMesh()
 {
-	if (SweepPointsTrans.IsEmpty() && Connections.IsEmpty())
+	AActor* Owner = GetOwner();
+	ensureAlwaysMsgf(nullptr!=Owner, TEXT("Component Has No Owner"));
+	if (SweepPointsTrans.IsEmpty())
 	{
+		UNotifyUtilities::ShowPopupMsgAtCorner(
+			FString::Printf(
+				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
 		return false;
 	}
-	//MergeConnectionsIntoSweepPoints();
-	for (int32 i = 1; i < SweepPointsTrans.Num(); ++i)
+	if (!MeshComponent.IsValid())
 	{
-		FVector CenterLocation = (SweepPointsTrans[i - 1].GetLocation() + SweepPointsTrans[i].GetLocation()) / 2.0;
-		double BoxHalfLength = FVector::Dist(SweepPointsTrans[i - 1].GetLocation(), SweepPointsTrans[i].GetLocation()) /
-			2.0;
-		FVector BoxExtent(BoxHalfLength, 250.0, 10);
-		FBox DebugBox(-BoxExtent, BoxExtent);
-		FRotator BoxRotator = UKismetMathLibrary::MakeRotFromX(
-			(SweepPointsTrans[i].GetLocation() - SweepPointsTrans[i - 1].GetLocation()).GetSafeNormal());
-		FTransform DebugBoxTrans(BoxRotator, CenterLocation);
-		DrawDebugSolidBox(this->GetWorld(), DebugBox, FColor::Cyan, DebugBoxTrans, true);
+		UNotifyUtilities::ShowPopupMsgAtCorner(
+			FString::Printf(
+				TEXT("[ERROR]%s Create Intersection Failed,Null MeshComp Found!"), *Owner->GetActorLabel()));
+		return false;
 	}
-	return false;
+	UDynamicMeshComponent* MeshComponentPtr = MeshComponent.Pin().Get();
+
+	TArray<FVector2D> SweepShape = RoadInfo.CrossSectionCoord;
+	if (SweepShape.IsEmpty())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner(
+			FString::Printf(
+				TEXT("[ERROR]%s Create Intersection Failed,CrossSection Shape Is Not Defined"),
+				*Owner->GetActorLabel()));
+		return false;
+	}
+	if (!bIsLocalSpace)
+	{
+		ConvertPointToLocalSpace(Owner->GetTransform());
+	}
+	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
+	FTransform SweepMeshTrans = FTransform::Identity;
+	SweepMeshTrans.SetLocation(FVector(0.0, 0.0, 15.0));
+	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(MeshComponentPtr->GetDynamicMesh(),
+	                                                                  GeometryScriptOptions, SweepMeshTrans, SweepShape,
+	                                                                  SweepPointsTrans);
+	FGeometryScriptSplitNormalsOptions SplitOptions;
+	FGeometryScriptCalculateNormalsOptions CalculateOptions;
+	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
+	                                                                 CalculateOptions);
+	return true;
 }
 
 void URoadMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshComponent)
@@ -121,39 +139,17 @@ void URoadMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshCom
 	}
 }
 
-/*void URoadMeshGenerator::MergeConnectionsIntoSweepPoints()
+void URoadMeshGenerator::ConvertPointToLocalSpace(const FTransform& InActorTransform)
 {
-	if (Connections.IsEmpty() || !ReferenceSpline.IsValid() || nullptr == this->GetOwner())
+	TArray<FTransform> Results;
+	for (auto& SinglePathPointTrans : SweepPointsTrans)
 	{
-		return;
+		FVector LocationInLocalSpace = UKismetMathLibrary::InverseTransformLocation(
+			InActorTransform, SinglePathPointTrans.GetLocation());
+		SinglePathPointTrans.SetLocation(LocationInLocalSpace);
+		FRotator RotatorInLocalSpace = UKismetMathLibrary::InverseTransformRotation(
+			InActorTransform, SinglePathPointTrans.GetRotation().Rotator());
+		SinglePathPointTrans.SetRotation(RotatorInLocalSpace.Quaternion());
 	}
-	UE_LOG(LogTemp, Display, TEXT("[MergePath] %s Revecive %d Connections"), *this->GetOwner()->GetActorLabel(),
-	       Connections.Num());
-	TArray<FTransform> ConnectPointsTrans;
-	for (const FIntersectionSegment& Connection : Connections)
-	{
-		const FVector ConnectPointLoc = Connection.IntersectionEndPointWS;
-		USplineComponent* PathSpline = ReferenceSpline.Pin().Get();
-		float SplineDistance = PathSpline->GetDistanceAlongSplineAtLocation(
-			ConnectPointLoc, ESplineCoordinateSpace::World);
-		FTransform ConnectTrans = PathSpline->GetTransformAtDistanceAlongSpline(
-			SplineDistance, ESplineCoordinateSpace::World);
-		ConnectPointsTrans.Emplace(ConnectTrans);
-	}
-	if (!SweepPointsTrans.IsEmpty())
-	{
-		FVector StartLocation = SweepPointsTrans[0].GetLocation();
-		FVector EndLocation = SweepPointsTrans.Last(0).GetLocation();
-		for (const auto& ConnectionTrans : ConnectPointsTrans)
-		{
-			float DistanceToStart = FVector::Dist2D(ConnectionTrans.GetLocation(), StartLocation);
-			float DistanceToEnd = FVector::Dist2D(ConnectionTrans.GetLocation(), EndLocation);
-			int32 InsertIndex = DistanceToStart < DistanceToEnd ? 0 : SweepPointsTrans.Num();
-			SweepPointsTrans.Insert(ConnectionTrans, InsertIndex);
-		}
-	}
-	else
-	{
-		SweepPointsTrans.Append(ConnectPointsTrans);
-	}
-}*/
+	bIsLocalSpace = true;
+}

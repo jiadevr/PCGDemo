@@ -22,10 +22,7 @@
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	//根据黑客帝国的数据
-	RoadPresetMap.Emplace(ELaneType::COLLECTORROADS, FLaneMeshInfo(500.0f, 20.0f));
-	RoadPresetMap.Emplace(ELaneType::ARTERIALROADS, FLaneMeshInfo(1000.0f, 20.0f));
-	RoadPresetMap.Emplace(ELaneType::EXPRESSWAYS, FLaneMeshInfo(2000.0f, 20.0f));
+
 	ComponentMoveHandle = GEditor->OnComponentTransformChanged().AddUObject(
 		this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
 	RoadActorRemovedHandle = ComponentMoveHandle = GEditor->OnLevelActorDeleted().AddUObject(
@@ -504,8 +501,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error:Find Null Spline");
 		return;
 	}
-	//需要把完整、连续的Spline提取出来
-	//使用四叉树提取可能存在十字路口的格子
+	//1，需要把完整、连续的Spline提取出来，使用四叉树提取可能存在十字路口的格子
 	for (const auto& SingleSpline : RoadSplines)
 	{
 		if (!SingleSpline.IsValid())
@@ -564,13 +560,10 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			ContinuousSegmentsGroups.Emplace(AllSegmentsIndex);
 		}
 
-		//交叉坐标也需要进行拆分，附着到最近的样条上
+		//2.判断十字路口端点位于哪个Segment、将其作为附加信息与连续Segments封装到FConnectionInsertInfo结构体
 		//对应ContinuousSegmentsGroup的二维序号和是否为前缀
 		TMultiMap<int32, FConnectionInsertInfo> SegmentGroupToConnectionToHead;
-		//TMultiMap<FIntersectionSegment, uint32> ConnectionToPotentialSegments;
 		USplineComponent* TargetSplinePtr = SingleSpline.Pin().Get();
-
-		//TArray<FConnectionInsertInfo> AllInsertInfo;
 		for (const FIntersectionSegment& IntersectionSegment : RoadIntersectionConnectionInfo)
 		{
 			FBox2D BoxOfConnection(ForceInit);
@@ -620,7 +613,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			//不要直接在这里插入（相当于一边遍历一边修改），会破坏上面的算法
 		}
 
-		//创建Actor负载信息
+		//3.创建Actor负载信息
 		for (int32 i = 0; i < ContinuousSegmentsGroups.Num(); ++i)
 		{
 			TArray<uint32>& ContinuousSegments = ContinuousSegmentsGroups[i];
@@ -631,7 +624,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			{
 				RoadSegmentTransforms.Emplace(IndexToAllSegments[ContinuousSegments[j]].EndTransform);
 			}
-			//把衔接位置信息放进去
+			//生成衔接位置信息
 			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
 			if (SegmentGroupToConnectionToHead.Contains(i))
 			{
@@ -658,20 +651,22 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			FString ActorLabel = FString::Printf(TEXT("RoadActor%d"), RoadCounter);
 			AActor* RoadActor = UEditorComponentUtilities::SpawnEmptyActor(ActorLabel, StartTransform);
 			ensureAlways(nullptr!=RoadActor);
+			
 			UActorComponent* MeshCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 				RoadActor, UDynamicMeshComponent::StaticClass());
 			UDynamicMeshComponent* MeshComp = Cast<UDynamicMeshComponent>(MeshCompTemp);
 			UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 				RoadActor, URoadMeshGenerator::StaticClass());
 			URoadMeshGenerator* GeneratorComp = Cast<URoadMeshGenerator>(GeneratorCompTemp);
+			
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetReferenceSpline(SingleSpline);
-			//GeneratorComp->SetRoadPathTransform(RoadSegmentTransforms);
 			GeneratorComp->SetRoadInfo(RoadWithConnectInfo);
 			RoadMeshGenerators.Emplace(GeneratorComp);
 			RoadCounter++;
 		}
 	}
+	//4.调用生成
 	for (const auto& RoadMeshGenerator : RoadMeshGenerators)
 	{
 		if (!RoadMeshGenerator.IsValid())
@@ -682,74 +677,228 @@ void URoadGeneratorSubsystem::GenerateRoads()
 	}
 }
 
-void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
-                                                        ELaneType LaneTypeEnum, float StartShrink, float EndShrink)
+TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex,
+                                                                         TArray<uint32>& BreakPoints)
 {
-	if (nullptr == TargetSpline || nullptr == TargetSpline->GetOwner())
+	TArray<TArray<uint32>> Results;
+	if (BreakPoints.IsEmpty())
 	{
-		UNotifyUtilities::ShowPopupMsgAtCorner("Fail To Create SweepMesh Invalid Spline");
-		return;
+		Results.Emplace(AllSegmentIndex);
+		return Results;
 	}
-	FString SplineOwnerName = TargetSpline->GetOwner()->GetActorLabel() + "_GenMesh";
-	FTransform SplineOwnerTransform = TargetSpline->GetOwner()->GetTransform();
-	SplineOwnerTransform.SetScale3D(FVector(1.0, 1.0, 1.0));
-	TObjectPtr<AActor> MeshActor = UEditorComponentUtilities::SpawnEmptyActor(SplineOwnerName, SplineOwnerTransform);
-	TObjectPtr<URoadMeshGenerator> RoadDataComp = Cast<URoadMeshGenerator>(
-		UEditorComponentUtilities::AddComponentInEditor(MeshActor, URoadMeshGenerator::StaticClass()));
-	if (nullptr == RoadDataComp)
+	//连续数组问题使用滑动窗口处理，但因为不需要长度数据，可以直接用单指针模拟窗口
+	TArray<uint32> IndexSeries;
+	//int32 LeftIndex = 0;
+	int32 RightIndex = 0;
+	BreakPoints.Sort();
+	int32 BreakpointIndex = 0;
+	int32 ValidBreakPoints = BreakPoints.Num();
+	//对齐数据
+	while (ValidBreakPoints > 0 && BreakPoints[BreakpointIndex] < AllSegmentIndex[0])
 	{
-		UNotifyUtilities::ShowPopupMsgAtCorner("Generate DataRecorder Failed");
-		return;
+		BreakpointIndex++;
+		ValidBreakPoints--;
 	}
-	TObjectPtr<UDynamicMeshComponent> DynamicMeshComp = Cast<UDynamicMeshComponent>(
-		UEditorComponentUtilities::AddComponentInEditor(MeshActor, UDynamicMeshComponent::StaticClass()));
-
-	if (nullptr == DynamicMeshComp)
+	int32 BreakpointIndexLast = BreakPoints.Num() - 1;
+	while (ValidBreakPoints > 0 && BreakPoints[BreakpointIndexLast] > AllSegmentIndex.Last(0))
 	{
-		UNotifyUtilities::ShowPopupMsgAtCorner("Generate Mesh Failed");
-		return;
+		BreakpointIndexLast--;
+		ValidBreakPoints--;
 	}
-	UDynamicMesh* DynamicMesh = DynamicMeshComp->GetDynamicMesh();
-	DynamicMesh->Reset();
-	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
-	FTransform SweepMeshTrans = FTransform::Identity;
-	int32 ControlPointsCount = TargetSpline->GetNumberOfSplinePoints();
-	TArray<FTransform> SweepPath;
-	ResampleSamplePoint(TargetSpline, SweepPath, RoadPresetMap[LaneTypeEnum].SampleLength,
-	                    0.0f, 0.0f);
-	RoadDataComp->SetRoadPathTransform(SweepPath);
-	RoadDataComp->SetReferenceSpline(TargetSpline);
-	TArray<FVector2D> SweepShape = RoadPresetMap[LaneTypeEnum].CrossSectionCoord;
-	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(DynamicMesh, GeometryScriptOptions,
-	                                                                  SweepMeshTrans, SweepShape, SweepPath);
-	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(DynamicMesh);
-	FGeometryScriptSplitNormalsOptions SplitOptions;
-	FGeometryScriptCalculateNormalsOptions CalculateOptions;
-	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(DynamicMesh, SplitOptions, CalculateOptions);
-}
-
-float URoadGeneratorSubsystem::GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex)
-{
-	if (SegmentIndex < 0 || SegmentIndex >= TargetSpline->GetNumberOfSplineSegments())
+	if (ValidBreakPoints <= 0)
 	{
-		return 0;
+		Results.Emplace(AllSegmentIndex);
+		return Results;
 	}
-	if (SegmentIndex == TargetSpline->GetNumberOfSplinePoints() - 1)
+	while (RightIndex < AllSegmentIndex.Num())
 	{
-		if (TargetSpline->IsClosedLoop())
+		//没遇到BreakPionts中的值是扩张
+		if (AllSegmentIndex[RightIndex] != BreakPoints[BreakpointIndex])
 		{
-			return TargetSpline->GetSplineLength() - TargetSpline->
-				GetDistanceAlongSplineAtSplinePoint(SegmentIndex + 1);
+			IndexSeries.Emplace(AllSegmentIndex[RightIndex]);
+			RightIndex++;
 		}
+		//遇到BreakPoints时更新结果并收缩
 		else
 		{
-			return 0;
+			if (IndexSeries.Num() > 0)
+			{
+				Results.Emplace(IndexSeries);
+			}
+			IndexSeries.Reset();
+			//这里使用两个数组单调且元素不重复特性
+			while (RightIndex < AllSegmentIndex.Num() &&
+				BreakpointIndex < BreakPoints.Num() && AllSegmentIndex[RightIndex] == BreakPoints[BreakpointIndex])
+			{
+				BreakpointIndex++;
+				RightIndex++;
+			}
+			//两个都走到头了
+			if (BreakpointIndex == BreakPoints.Num() && RightIndex == AllSegmentIndex.Num())
+			{
+				break;
+			}
+			// BreakPoint是Allsegment子集，不存在BreakpointIndex没到头但是RightIndex到头的情况
+			if (BreakpointIndex == BreakPoints.Num() && RightIndex < AllSegmentIndex.Num())
+			{
+				//RightIndex++;
+				//没有发现截取子数组的函数，使用FMemory::Memcpy()
+				IndexSeries.SetNum(AllSegmentIndex.Num() - RightIndex);
+				FMemory::Memcpy(IndexSeries.GetData(),
+				                AllSegmentIndex.GetData() + RightIndex,
+				                (AllSegmentIndex.Num() - RightIndex) * sizeof(uint32));
+				break;
+			}
+			//此时回归正常情况两者指向数字不同，收缩窗口
+			//Left=Right
 		}
 	}
-	return TargetSpline->GetDistanceAlongSplineAtSplinePoint(SegmentIndex + 1) - TargetSpline->
-		GetDistanceAlongSplineAtSplinePoint(SegmentIndex);
+	//把最后一组数字放进去
+	if (!IndexSeries.IsEmpty())
+	{
+		Results.Emplace(IndexSeries);
+	}
+	return Results;
 }
 
+FConnectionInsertInfo URoadGeneratorSubsystem::FindInsertIndexInExistedContinuousSegments(
+	const TArray<TArray<uint32>>& InContinuousSegmentsGroups, const TArray<FSplinePolyLineSegment>& InAllSegmentOnSpline,
+	const uint32 OwnerSegmentID, const FVector& PointTransWS)
+{
+	FConnectionInsertInfo Result;
+	//利用连续特性,寻找是不是在端点
+	if (OwnerSegmentID < InContinuousSegmentsGroups[0][0])
+	{
+		Result.GroupIndex = 0;
+		Result.bConnectToGroupHead = true;
+	}
+	else if (OwnerSegmentID > InContinuousSegmentsGroups.Last(0).Last(0))
+	{
+		Result.GroupIndex = InContinuousSegmentsGroups.Num() - 1;
+		Result.bConnectToGroupHead = false;
+	}
+	else
+	{
+		int32 IndexDistance = INT_MAX;
+		uint32 NeighborSegmentIndex = UINT_MAX;
+		bool bChoiceHead = true;
+		for (int32 i = 1; i < InContinuousSegmentsGroups.Num(); ++i)
+		{
+			//@TODO：可以使用二分查找优化
+			//遍历寻找中间位置
+			if (InContinuousSegmentsGroups[i - 1].Last() < OwnerSegmentID && OwnerSegmentID <=
+				InContinuousSegmentsGroups[i][0])
+			{
+				uint32 IndexGapToLastEnd = OwnerSegmentID - InContinuousSegmentsGroups[i - 1].Last();
+				uint32 IndexGapToNextStart = InContinuousSegmentsGroups[i][0] - OwnerSegmentID;
+				//距离两端序号距离一样
+				if (IndexGapToLastEnd == IndexGapToNextStart)
+				{
+					FVector LocOfLastEnd = InAllSegmentOnSpline[InContinuousSegmentsGroups[i - 1].Last()].EndTransform.
+						GetLocation();
+					float DisToLastEnd = FVector::DistSquared2D(LocOfLastEnd, PointTransWS);
+					FVector LocOfNextStart = InAllSegmentOnSpline[InContinuousSegmentsGroups[i][0]].EndTransform.
+						GetLocation();
+					float DisToNestStart = FVector::DistSquared2D(LocOfNextStart, PointTransWS);
+					//理论上不存在等于
+					if (DisToLastEnd <= DisToNestStart)
+					{
+						Result.GroupIndex = i - 1;
+						Result.bConnectToGroupHead = false;
+						break;
+					}
+					else
+					{
+						Result.GroupIndex = i;
+						Result.bConnectToGroupHead = true;
+						break;
+					}
+				}
+				//距离上一段终点更近
+				else if (IndexGapToLastEnd < IndexGapToNextStart)
+				{
+					Result.GroupIndex = i - 1;
+					Result.bConnectToGroupHead = false;
+					break;
+				}
+				//距离当前段起点更近
+				else
+				{
+					Result.GroupIndex = i;
+					Result.bConnectToGroupHead = true;
+					break;
+				}
+			}
+		}
+	}
+	return Result;
+}
+
+TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponent* TargetSpline)
+{
+	TArray<FTransform> Results;
+	if (nullptr == TargetSpline || TargetSpline->GetNumberOfSplinePoints() <= 1)
+	{
+		return Results;
+	}
+	const float SegmentMaxDisThreshold = 10 * PolyLineSampleDistance;
+	const float LengthOfOriginalSpline = TargetSpline->GetSplineLength();
+	TArray<FVector> PolyLineEndPointLoc;
+	TArray<double> PolyLineLengths;
+	//曲线，该函数返回闭合样条返回段,Distance数组是到每一个端点处的长度（类似前缀和）
+	TargetSpline->ConvertSplineToPolyLineWithDistances(ESplineCoordinateSpace::World, PolyLineSampleDistance,
+	                                                   PolyLineEndPointLoc, PolyLineLengths);
+	TMap<int32, TArray<FTransform>> SegmentsToSubdivide;
+	Results.Reserve(PolyLineEndPointLoc.Num());
+	Results.Emplace(
+		TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[0], ESplineCoordinateSpace::World,
+		                                                true));
+	for (int i = 1; i < PolyLineLengths.Num(); ++i)
+	{
+		Results.Emplace(
+			TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[i], ESplineCoordinateSpace::World,
+			                                                true));
+		if (PolyLineLengths[i] - PolyLineLengths[i - 1] > SegmentMaxDisThreshold)
+		{
+			//以该点为起点的位置需要插入元素
+			SegmentsToSubdivide.Add(i - 1);
+		}
+	}
+	if (SegmentsToSubdivide.IsEmpty())
+	{
+		return Results;
+	}
+	//如果需要处理
+	for (TPair<int32, TArray<FTransform>>& TargetSegment : SegmentsToSubdivide)
+	{
+		const int32 SegmentIndex = TargetSegment.Key;
+		const float OriginalSegmentLength = PolyLineLengths[SegmentIndex + 1] - PolyLineLengths[SegmentIndex];
+		int32 TargetSubdivisionNum = FMath::CeilToInt32(OriginalSegmentLength / SegmentMaxDisThreshold);
+		double TargetSubdivisionLength = OriginalSegmentLength / TargetSubdivisionNum;
+		TArray<FTransform> SubdivisionPoints;
+		for (int32 j = 1; j < TargetSubdivisionNum; j++)
+		{
+			float DisToSubdivisionPoint = static_cast<float>(j * TargetSubdivisionLength + PolyLineLengths[
+				SegmentIndex]);
+			TargetSegment.Value.Emplace(
+				TargetSpline->GetTransformAtDistanceAlongSpline(DisToSubdivisionPoint, ESplineCoordinateSpace::World));
+		}
+	}
+	//FTransform为非POD对象，不能直接内存拷贝，下面这个函数意义不大
+	/*TArray<TArray<uint32>> ContinuousIndexSeries = GetContinuousIndexSeries(
+		BreakPoints, static_cast<uint32>(PolyLineLengths.Num() - 1));*/
+	InsertElementsAtIndex(Results, SegmentsToSubdivide);
+	return Results;
+}
+
+
+
+
+
+#pragma endregion GenerateRoad
+
+# pragma region DOF
+/*
 bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* TargetSpline,
                                                   TArray<FTransform>& OutResampledTransform,
                                                   float MaxResampleDistance,
@@ -895,222 +1044,55 @@ bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* Target
 	OutResampledTransform = MoveTemp(ResamplePointsOnSpline);
 	return true;
 }
+*/
 
-TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex,
-                                                                         TArray<uint32>& BreakPoints)
+/*void URoadGeneratorSubsystem::GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
+                                                        ELaneType LaneTypeEnum, float StartShrink, float EndShrink)
 {
-	TArray<TArray<uint32>> Results;
-	if (BreakPoints.IsEmpty())
+	if (nullptr == TargetSpline || nullptr == TargetSpline->GetOwner())
 	{
-		Results.Emplace(AllSegmentIndex);
-		return Results;
+		UNotifyUtilities::ShowPopupMsgAtCorner("Fail To Create SweepMesh Invalid Spline");
+		return;
 	}
-	//连续数组问题使用滑动窗口处理，但因为不需要长度数据，可以直接用单指针模拟窗口
-	TArray<uint32> IndexSeries;
-	//int32 LeftIndex = 0;
-	int32 RightIndex = 0;
-	BreakPoints.Sort();
-	int32 BreakpointIndex = 0;
-	int32 ValidBreakPoints = BreakPoints.Num();
-	//对齐数据
-	while (ValidBreakPoints > 0 && BreakPoints[BreakpointIndex] < AllSegmentIndex[0])
+	FString SplineOwnerName = TargetSpline->GetOwner()->GetActorLabel() + "_GenMesh";
+	FTransform SplineOwnerTransform = TargetSpline->GetOwner()->GetTransform();
+	SplineOwnerTransform.SetScale3D(FVector(1.0, 1.0, 1.0));
+	TObjectPtr<AActor> MeshActor = UEditorComponentUtilities::SpawnEmptyActor(SplineOwnerName, SplineOwnerTransform);
+	TObjectPtr<URoadMeshGenerator> RoadDataComp = Cast<URoadMeshGenerator>(
+		UEditorComponentUtilities::AddComponentInEditor(MeshActor, URoadMeshGenerator::StaticClass()));
+	if (nullptr == RoadDataComp)
 	{
-		BreakpointIndex++;
-		ValidBreakPoints--;
+		UNotifyUtilities::ShowPopupMsgAtCorner("Generate DataRecorder Failed");
+		return;
 	}
-	int32 BreakpointIndexLast = BreakPoints.Num() - 1;
-	while (ValidBreakPoints > 0 && BreakPoints[BreakpointIndexLast] > AllSegmentIndex.Last(0))
-	{
-		BreakpointIndexLast--;
-		ValidBreakPoints--;
-	}
-	if (ValidBreakPoints <= 0)
-	{
-		Results.Emplace(AllSegmentIndex);
-		return Results;
-	}
-	while (RightIndex < AllSegmentIndex.Num())
-	{
-		//没遇到BreakPionts中的值是扩张
-		if (AllSegmentIndex[RightIndex] != BreakPoints[BreakpointIndex])
-		{
-			IndexSeries.Emplace(AllSegmentIndex[RightIndex]);
-			RightIndex++;
-		}
-		//遇到BreakPoints时更新结果并收缩
-		else
-		{
-			if (IndexSeries.Num() > 0)
-			{
-				Results.Emplace(IndexSeries);
-			}
-			IndexSeries.Reset();
-			//这里使用两个数组单调且元素不重复特性
-			while (RightIndex < AllSegmentIndex.Num() &&
-				BreakpointIndex < BreakPoints.Num() && AllSegmentIndex[RightIndex] == BreakPoints[BreakpointIndex])
-			{
-				BreakpointIndex++;
-				RightIndex++;
-			}
-			//两个都走到头了
-			if (BreakpointIndex == BreakPoints.Num() && RightIndex == AllSegmentIndex.Num())
-			{
-				break;
-			}
-			// BreakPoint是Allsegment子集，不存在BreakpointIndex没到头但是RightIndex到头的情况
-			if (BreakpointIndex == BreakPoints.Num() && RightIndex < AllSegmentIndex.Num())
-			{
-				//RightIndex++;
-				//没有发现截取子数组的函数，使用FMemory::Memcpy()
-				IndexSeries.SetNum(AllSegmentIndex.Num() - RightIndex);
-				FMemory::Memcpy(IndexSeries.GetData(),
-				                AllSegmentIndex.GetData() + RightIndex,
-				                (AllSegmentIndex.Num() - RightIndex) * sizeof(uint32));
-				break;
-			}
-			//此时回归正常情况两者指向数字不同，收缩窗口
-			//Left=Right
-		}
-	}
-	//把最后一组数字放进去
-	if (!IndexSeries.IsEmpty())
-	{
-		Results.Emplace(IndexSeries);
-	}
-	return Results;
-}
+	TObjectPtr<UDynamicMeshComponent> DynamicMeshComp = Cast<UDynamicMeshComponent>(
+		UEditorComponentUtilities::AddComponentInEditor(MeshActor, UDynamicMeshComponent::StaticClass()));
 
-FConnectionInsertInfo URoadGeneratorSubsystem::FindInsertIndexInExistedContinuousSegments(
-	TArray<TArray<uint32>>& InContinuousSegmentsGroups, const TArray<FSplinePolyLineSegment>& InAllSegmentOnSpline,
-	const uint32 OwnerSegmentID, const FVector& PointTransWS)
-{
-	FConnectionInsertInfo Result;
-	//利用连续特性,寻找是不是在端点
-	if (OwnerSegmentID < InContinuousSegmentsGroups[0][0])
+	if (nullptr == DynamicMeshComp)
 	{
-		Result.GroupIndex = 0;
-		Result.bConnectToGroupHead = true;
+		UNotifyUtilities::ShowPopupMsgAtCorner("Generate Mesh Failed");
+		return;
 	}
-	else if (OwnerSegmentID > InContinuousSegmentsGroups.Last(0).Last(0))
-	{
-		Result.GroupIndex = InContinuousSegmentsGroups.Num() - 1;
-		Result.bConnectToGroupHead = false;
-	}
-	else
-	{
-		int32 IndexDistance = INT_MAX;
-		uint32 NeighborSegmentIndex = UINT_MAX;
-		bool bChoiceHead = true;
-		for (int32 i = 1; i < InContinuousSegmentsGroups.Num(); ++i)
-		{
-			//@TODO：可以使用二分查找优化
-			//遍历寻找中间位置
-			if (InContinuousSegmentsGroups[i - 1].Last() < OwnerSegmentID && OwnerSegmentID <=
-				InContinuousSegmentsGroups[i][0])
-			{
-				uint32 IndexGapToLastEnd = OwnerSegmentID - InContinuousSegmentsGroups[i - 1].Last();
-				uint32 IndexGapToNextStart = InContinuousSegmentsGroups[i][0] - OwnerSegmentID;
-				//距离两端序号距离一样
-				if (IndexGapToLastEnd == IndexGapToNextStart)
-				{
-					FVector LocOfLastEnd = InAllSegmentOnSpline[InContinuousSegmentsGroups[i - 1].Last()].EndTransform.
-						GetLocation();
-					float DisToLastEnd = FVector::DistSquared2D(LocOfLastEnd, PointTransWS);
-					FVector LocOfNextStart = InAllSegmentOnSpline[InContinuousSegmentsGroups[i][0]].EndTransform.
-						GetLocation();
-					float DisToNestStart = FVector::DistSquared2D(LocOfNextStart, PointTransWS);
-					//理论上不存在等于
-					if (DisToLastEnd <= DisToNestStart)
-					{
-						Result.GroupIndex = i - 1;
-						Result.bConnectToGroupHead = false;
-						break;
-					}
-					else
-					{
-						Result.GroupIndex = i;
-						Result.bConnectToGroupHead = true;
-						break;
-					}
-				}
-				//距离上一段终点更近
-				else if (IndexGapToLastEnd < IndexGapToNextStart)
-				{
-					Result.GroupIndex = i - 1;
-					Result.bConnectToGroupHead = false;
-					break;
-				}
-				//距离当前段起点更近
-				else
-				{
-					Result.GroupIndex = i;
-					Result.bConnectToGroupHead = true;
-					break;
-				}
-			}
-		}
-	}
-	return Result;
-}
+	UDynamicMesh* DynamicMesh = DynamicMeshComp->GetDynamicMesh();
+	DynamicMesh->Reset();
+	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
+	FTransform SweepMeshTrans = FTransform::Identity;
+	int32 ControlPointsCount = TargetSpline->GetNumberOfSplinePoints();
+	TArray<FTransform> SweepPath;
+	ResampleSamplePoint(TargetSpline, SweepPath, RoadPresetMap[LaneTypeEnum].SampleLength,
+	                    0.0f, 0.0f);
+	RoadDataComp->SetRoadPathTransform(SweepPath);
+	RoadDataComp->SetReferenceSpline(TargetSpline);
+	TArray<FVector2D> SweepShape = RoadPresetMap[LaneTypeEnum].CrossSectionCoord;
+	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(DynamicMesh, GeometryScriptOptions,
+	                                                                  SweepMeshTrans, SweepShape, SweepPath);
+	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(DynamicMesh);
+	FGeometryScriptSplitNormalsOptions SplitOptions;
+	FGeometryScriptCalculateNormalsOptions CalculateOptions;
+	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(DynamicMesh, SplitOptions, CalculateOptions);
+}*/
 
-TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponent* TargetSpline)
-{
-	TArray<FTransform> Results;
-	if (nullptr == TargetSpline || TargetSpline->GetNumberOfSplinePoints() <= 1)
-	{
-		return Results;
-	}
-	const float SegmentMaxDisThreshold = 10 * PolyLineSampleDistance;
-	const float LengthOfOriginalSpline = TargetSpline->GetSplineLength();
-	TArray<FVector> PolyLineEndPointLoc;
-	TArray<double> PolyLineLengths;
-	//曲线，该函数返回闭合样条返回段,Distance数组是到每一个端点处的长度（类似前缀和）
-	TargetSpline->ConvertSplineToPolyLineWithDistances(ESplineCoordinateSpace::World, PolyLineSampleDistance,
-	                                                   PolyLineEndPointLoc, PolyLineLengths);
-	TMap<int32, TArray<FTransform>> SegmentsToSubdivide;
-	Results.Reserve(PolyLineEndPointLoc.Num());
-	Results.Emplace(
-		TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[0], ESplineCoordinateSpace::World,
-		                                                true));
-	for (int i = 1; i < PolyLineLengths.Num(); ++i)
-	{
-		Results.Emplace(
-			TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[i], ESplineCoordinateSpace::World,
-			                                                true));
-		if (PolyLineLengths[i] - PolyLineLengths[i - 1] > SegmentMaxDisThreshold)
-		{
-			//以该点为起点的位置需要插入元素
-			SegmentsToSubdivide.Add(i - 1);
-		}
-	}
-	if (SegmentsToSubdivide.IsEmpty())
-	{
-		return Results;
-	}
-	//如果需要处理
-	for (TPair<int32, TArray<FTransform>>& TargetSegment : SegmentsToSubdivide)
-	{
-		const int32 SegmentIndex = TargetSegment.Key;
-		const float OriginalSegmentLength = PolyLineLengths[SegmentIndex + 1] - PolyLineLengths[SegmentIndex];
-		int32 TargetSubdivisionNum = FMath::CeilToInt32(OriginalSegmentLength / SegmentMaxDisThreshold);
-		double TargetSubdivisionLength = OriginalSegmentLength / TargetSubdivisionNum;
-		TArray<FTransform> SubdivisionPoints;
-		for (int32 j = 1; j < TargetSubdivisionNum; j++)
-		{
-			float DisToSubdivisionPoint = static_cast<float>(j * TargetSubdivisionLength + PolyLineLengths[
-				SegmentIndex]);
-			TargetSegment.Value.Emplace(
-				TargetSpline->GetTransformAtDistanceAlongSpline(DisToSubdivisionPoint, ESplineCoordinateSpace::World));
-		}
-	}
-	//FTransform为非POD对象，不能直接内存拷贝，下面这个函数意义不大
-	/*TArray<TArray<uint32>> ContinuousIndexSeries = GetContinuousIndexSeries(
-		BreakPoints, static_cast<uint32>(PolyLineLengths.Num() - 1));*/
-	InsertElementsAtIndex(Results, SegmentsToSubdivide);
-	return Results;
-}
-
-TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControlPoint(
+/*TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControlPoint(
 	const USplineComponent* TargetSpline, float TargetLength, int32 NeighborIndex, bool bIsBackTraverse,
 	float MaxResampleDistance, bool bIsClosedInterval)
 {
@@ -1204,9 +1186,9 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionBetweenGivenAndControl
 		}
 	}
 	return ResultTransforms;
-}
+}*/
 
-TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline,
+/*TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline,
                                                                           float StartShrink, float EndShrink,
                                                                           float MaxResampleDistance,
                                                                           bool bIsClosedInterval, bool bIsLocalSpace)
@@ -1263,6 +1245,29 @@ TArray<FTransform> URoadGeneratorSubsystem::GetSubdivisionOnSingleSegment(const 
 			TargetSpline->GetTransformAtDistanceAlongSpline(EndShrink, CoordSpace, true));
 	}
 	return ResultTransforms;
-}
+}*/
 
-#pragma endregion GenerateRoad
+/*
+float URoadGeneratorSubsystem::GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex)
+{
+	if (SegmentIndex < 0 || SegmentIndex >= TargetSpline->GetNumberOfSplineSegments())
+	{
+		return 0;
+	}
+	if (SegmentIndex == TargetSpline->GetNumberOfSplinePoints() - 1)
+	{
+		if (TargetSpline->IsClosedLoop())
+		{
+			return TargetSpline->GetSplineLength() - TargetSpline->
+				GetDistanceAlongSplineAtSplinePoint(SegmentIndex + 1);
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	return TargetSpline->GetDistanceAlongSplineAtSplinePoint(SegmentIndex + 1) - TargetSpline->
+		GetDistanceAlongSplineAtSplinePoint(SegmentIndex);
+}
+*/
+# pragma endregion DOF

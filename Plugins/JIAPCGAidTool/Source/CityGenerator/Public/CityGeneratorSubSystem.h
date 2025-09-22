@@ -30,7 +30,7 @@ protected:
 	bool bNeedRefreshSplineData=true;
 	
 public:
-#pragma region  Base
+#pragma region  UserSplineManage
 
 	/**
 	 * 获取场景中的SplineComponents，可选传入ActorTag和ComponentTag作为前置筛选，结果覆盖CityGeneratorSplineArray;
@@ -89,12 +89,13 @@ protected:
 	TObjectPtr<UWorld> GetEditorContext() const;
 
 
-#pragma endregion Base
+#pragma endregion UserSplineManage
+	
 #pragma region GenerateRoad
 
 public:
 	UFUNCTION(BlueprintCallable)
-	void GenerateRoads(USplineComponent* TargetSpline = nullptr);
+	void GenerateRoads();
 
 protected:
 	UPROPERTY()

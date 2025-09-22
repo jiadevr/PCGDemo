@@ -20,23 +20,41 @@ public:
 	// Sets default values for this component's properties
 	URoadMeshGenerator();
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int32 DebugIndex;
+
 	UFUNCTION(CallInEditor, BlueprintCallable)
 	void DrawDebugElemOnSweepPoint();
-
-	void SetRoadPathTransform(const TArray<FTransform>& InTransforms);
-
+	
+	/**
+	 * 设置参考/归属样条线,持有弱引用
+	 * @param InReferenceSpline 所属Spline
+	 */
 	void SetReferenceSpline(TWeakObjectPtr<USplineComponent> InReferenceSpline);
 
+	/**
+	 * 设置道路类型
+	 * @param InRoadType 道路枚举值，COLLECTORROADS=5m，ARTERIALROADS=10m,EXPRESSWAYS=20m
+	 */
 	void SetRoadType(ELaneType InRoadType);
 
+	/**
+	 * 设置道路Segment和连接点信息，分别传入，不要该函数前合并连接点和原本连续的Segments；在该函数中会进行合并
+	 * @param InRoadWithConnect 
+	 */
 	void SetRoadInfo(const FRoadSegmentsGroup & InRoadWithConnect);
 	
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
 
 protected:
+	bool bIsLocalSpace = false;
+	/**
+	 * 世界空间转换局部空间，原位转换，配合上面的bIsLocalSpace进行标记，仅在生成时进行一次性转换（便于分帧操作）
+	 * @param InActorTransform 
+	 */
+	void ConvertPointToLocalSpace(const FTransform& InActorTransform);
+	/**
+	 * 记录道路分段的坐标，默认传入世界空间坐标在生成前会原位转换为局部坐标
+	 */
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	TArray<FTransform> SweepPointsTrans;
 
@@ -44,10 +62,5 @@ protected:
 	TWeakObjectPtr<USplineComponent> ReferenceSpline;
 
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
-	FLaneMeshInfo RoadInfo;
-
-	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
-	TArray<FIntersectionSegment> Connections;
-
-	void MergeConnectionsIntoSweepPoints();
+	FLaneMeshInfo RoadInfo{500.0f};
 };

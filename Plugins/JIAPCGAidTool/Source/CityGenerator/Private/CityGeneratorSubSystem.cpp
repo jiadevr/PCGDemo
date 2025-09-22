@@ -495,29 +495,10 @@ TObjectPtr<UWorld> UCityGeneratorSubSystem::GetEditorContext() const
 #pragma endregion  Base
 
 #pragma region GenerateRoad
-void UCityGeneratorSubSystem::GenerateRoads(USplineComponent* TargetSpline)
+void UCityGeneratorSubSystem::GenerateRoads()
 {
-	if (nullptr == TargetSpline)
-	{
-		EAppReturnType::Type UserChoice = UNotifyUtilities::ShowMsgDialog(EAppMsgType::YesNo,
-		                                                                  "Select None SplineComp,Click [Yes] To Generate All,Click [No] To Quit",
-		                                                                  true);
-		if (UserChoice == EAppReturnType::Yes)
-		{
-			CollectAllSplines();
-			for (const TWeakObjectPtr<USplineComponent>& SplineComponent : CityGeneratorSplineSet)
-			{
-				if (SplineComponent.IsValid())
-				{
-					GetRoadGeneratorSystem().Pin()->GenerateSingleRoadBySweep(SplineComponent.Pin().Get());
-				}
-			}
-		}
-
-		return;
-	}
-	GetRoadGeneratorSystem().Pin()->GenerateSingleRoadBySweep(TargetSpline);
-	return;
+	GetRoadGeneratorSystem()->GenerateIntersections();
+	GetRoadGeneratorSystem()->GenerateRoads();
 }
 
 TWeakObjectPtr<URoadGeneratorSubsystem> UCityGeneratorSubSystem::GetRoadGeneratorSystem()

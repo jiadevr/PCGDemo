@@ -12,20 +12,31 @@ class URoadMeshGenerator;
 class UIntersectionMeshGenerator;
 class USplineComponent;
 
+/**
+ * 交点插入到连续分段的信息
+ */
 struct FConnectionInsertInfo
 {
 	FConnectionInsertInfo(){};
+	/**
+	 * 插入到二维数组ContinuousSegmentsGroups中一维的哪一个元素，即作为哪个连续SegmentsGroup的头或尾
+	 */
 	int32 GroupIndex = -1;
+	/**
+	 * 插入到连续SegmentsGroup的头部（true）或尾部（false），同时决定了插入位置，头部一定在原有元素之前，尾部一定在原有元素之后
+	 */
 	bool bConnectToGroupHead = true;
-	//连接到起点一定在起点前，连接到终点一定在终点后
+	/**
+	* 连接点Transform
+	*/
 	FTransform ConnectionTrans;
 };
+
 /**
  * 该类主要实现以下内容：
- * 1.承接CityGenerator类中用户输入的Spline信息，将其转换为PolyLineSegment并计算交点
+ * 1.承接CityGenerator类中用户输入的Spline信息，将其进行细分分段并转换为PolyLineSegment用于计算交点
  * 2.生成RoadActor和IntersectionActor，为其挂载的Generator传递核心Segment信息，由Generator负责结构细化和具体生成
  */
-
 UCLASS()
 class CITYGENERATOR_API URoadGeneratorSubsystem : public UEditorSubsystem
 {
@@ -170,46 +181,18 @@ protected:
 
 public:
 	/**
-	 * 对外接口，需要在交叉路口生成之后调用，生成道路构建信息
+	 * 对外接口，需要在交叉路口生成之后调用，生成道路构建信息具体功能包括：
+	 * 1.从SplineSegmentsInfo中获取样条信息并于十字路口的内容计算相交，获得**连续的Segments**作为道路基础信息
+	 * 2.获取十字路口的端点，判断端点位于哪个Segment、将其作为附加信息与连续Segments封装到FConnectionInsertInfo结构体
+	 * 3.生成道路Actor，配置基础信息并将FConnectionInsertInfo结构体发送给道路Actor挂载的URoadMeshGenerator
+	 * 4.调用道路生成
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoads();
 
 	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
+	
 
-	/**
-	 * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
-	 * @param TargetSpline 目标样条线
-	 * @param LaneTypeEnum 车道种类枚举值，目前在本类构造中初始化
-	 * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
-	 * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
-	 */
-	UFUNCTION(BlueprintCallable)
-	void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
-	                               const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
-	                               float EndShrink = 0.0f);
-
-	/**
-	 * 获得Spline给定Segment的长度，支持CloseLoop
-	 * @param TargetSpline 指定Spine
-	 * @param SegmentIndex 需要获取的Segment序号
-	 * @return 该Segment长度，当SegmentIndex不合法是返回0
-	 */
-	float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex);
-
-	/**
-	 * 对给定样条每一段进行重采样并整合输出，以获得Sweep所需的路径点。
-	 * 当存在Shrink时对开头、结尾、终点进行分别处理，整合算法为起点+开头开区间+中段左闭右开区间+(n-1)+结尾双开区间+终点;Linear需要每一段都为闭区间
-	 * @param TargetSpline 目标样条线
-	 * @param OutResampledTransform 输出，重采样获得的Transform，非附加方式，传入后会清空再填入数据
-	 * @param MaxResampleDistance 最大采样距离
-	 * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
-	 * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
-	 * @return 
-	 */
-	bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
-	                         float MaxResampleDistance, float StartShrink = 0.0,
-	                         float EndShrink = 0.0);
 	/**
 	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素，两数组要求元素唯一
 	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries，函数本身应该是Protected，但是为了单元测试放在Public
@@ -222,45 +205,20 @@ public:
 protected:
 
 
-	FConnectionInsertInfo FindInsertIndexInExistedContinuousSegments(TArray<TArray<uint32>>& InContinuousSegmentsGroups,
+	/**
+	 * 在已有的连续数组中找到给定点所属的Segment信息，用于确定衔接到路口的点应当作为哪一个连续SegmentsGroup的附属数据以及应当插入的位置
+	 * 具体数据插入位于RoadMeshGenerator，请勿使用该结果在本类中进行数据插入，Global新增会影响分割结果
+	 * @param InContinuousSegmentsGroups 已经分割的RoadSegmentIndex数组
+	 * @param InAllSegmentOnSpline 所在样条上的所有Segments，用于查找交点所在Segment
+	 * @param OwnerSegmentID 交点所在的Segment
+	 * @param PointTransWS 焦点位置
+	 * @return 
+	 */
+	FConnectionInsertInfo FindInsertIndexInExistedContinuousSegments(const TArray<TArray<uint32>>& InContinuousSegmentsGroups,
 	                                                                 const TArray<FSplinePolyLineSegment>&
 	                                                                 InAllSegmentOnSpline,
 	                                                                 const uint32 OwnerSegmentID,
 	                                                                 const FVector& PointTransWS);
-	/**
-	 * 道路枚举名称-道路构建信息表，在本类的Init中初始化
-	 */
-	UPROPERTY()
-	TMap<ELaneType, FLaneMeshInfo> RoadPresetMap;
-
-	/**
-	 * 当具有ShrinkStart、ShrinkEnd时使用该函数，传入使用的下一个节点，返回插值结果，使用TArray不是直接设置点，为了更安全使用返回值形式
-	 * @param TargetSpline 目标样条线
-	 * @param TargetLength ShinkValue，即ShrinkStartPoint到Index0的距离和ShrinkEndPoint到IndexLast的距离
-	 * @param NeighborIndex 与ShrinkPoint相邻的最近有效点序号，对于ShrinkStartPoint应该传入下一个点，对于ShrinkEndPoint应该传入上一点
-	 * @param bIsBackTraverse 区分ShrinkStart和ShrinkEnd，ShrinkStart是正向遍历，此处应当传入false；ShrinkEnd是反向遍历，此处应当传入true
-	 * @param MaxResampleDistance 最大采样距离，后续还会有调整
-	 * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
-	 * @return 返回该Segment插值之后的Transform数组
-	 */
-	TArray<FTransform> GetSubdivisionBetweenGivenAndControlPoint(const USplineComponent* TargetSpline,
-	                                                             float TargetLength, int32 NeighborIndex,
-	                                                             bool bIsBackTraverse, float MaxResampleDistance,
-	                                                             bool bIsClosedInterval);
-
-	/**
-	 * 当仅有两个控制点时生成直线或曲线细分点，如果为闭合样条则获取往复点
-	 * @param TargetSpline 目标样条线
-	 * @param StartShrink 起始点偏移量（>=0）
-	 * @param EndShrink 终点偏移量（>=0）
-	 * @param MaxResampleDistance 最大采样距离
-	 * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
-	 * @param bIsLocalSpace 是否返回局部空间坐标
-	 * @return 返回该Segment插值之后的Transform数组
-	 */
-	TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,
-	                                                 float EndShrink, float MaxResampleDistance,
-	                                                 bool bIsClosedInterval, bool bIsLocalSpace);
 
 #pragma endregion GenerateRoad
 };
@@ -310,3 +268,78 @@ void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, cons
 
 	TargetArray = MoveTemp(TempArray);
 }
+
+#pragma region DOF
+/*
+/**
+ * 对给定样条每一段进行重采样并整合输出，以获得Sweep所需的路径点。
+ * 当存在Shrink时对开头、结尾、终点进行分别处理，整合算法为起点+开头开区间+中段左闭右开区间+(n-1)+结尾双开区间+终点;Linear需要每一段都为闭区间
+ * @param TargetSpline 目标样条线
+ * @param OutResampledTransform 输出，重采样获得的Transform，非附加方式，传入后会清空再填入数据
+ * @param MaxResampleDistance 最大采样距离
+ * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
+ * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
+ * @return 
+ #1#
+bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
+						 float MaxResampleDistance, float StartShrink = 0.0,
+						 float EndShrink = 0.0);
+*/
+/*
+/**
+ * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
+ * @param TargetSpline 目标样条线
+ * @param LaneTypeEnum 车道种类枚举值，目前在本类构造中初始化
+ * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
+ * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
+ #1#
+UFUNCTION(BlueprintCallable)
+void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
+							   const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
+							   float EndShrink = 0.0f);
+ */
+
+/*
+/**
+ * 当具有ShrinkStart、ShrinkEnd时使用该函数，传入使用的下一个节点，返回插值结果，使用TArray不是直接设置点，为了更安全使用返回值形式
+ * @param TargetSpline 目标样条线
+ * @param TargetLength ShinkValue，即ShrinkStartPoint到Index0的距离和ShrinkEndPoint到IndexLast的距离
+ * @param NeighborIndex 与ShrinkPoint相邻的最近有效点序号，对于ShrinkStartPoint应该传入下一个点，对于ShrinkEndPoint应该传入上一点
+ * @param bIsBackTraverse 区分ShrinkStart和ShrinkEnd，ShrinkStart是正向遍历，此处应当传入false；ShrinkEnd是反向遍历，此处应当传入true
+ * @param MaxResampleDistance 最大采样距离，后续还会有调整
+ * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
+ * @return 返回该Segment插值之后的Transform数组
+ #1#
+TArray<FTransform> GetSubdivisionBetweenGivenAndControlPoint(const USplineComponent* TargetSpline,
+															 float TargetLength, int32 NeighborIndex,
+															 bool bIsBackTraverse, float MaxResampleDistance,
+															 bool bIsClosedInterval);
+*/
+
+/*
+/**
+ * 当仅有两个控制点时生成直线或曲线细分点，如果为闭合样条则获取往复点
+ * @param TargetSpline 目标样条线
+ * @param StartShrink 起始点偏移量（>=0）
+ * @param EndShrink 终点偏移量（>=0）
+ * @param MaxResampleDistance 最大采样距离
+ * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
+ * @param bIsLocalSpace 是否返回局部空间坐标
+ * @return 返回该Segment插值之后的Transform数组
+ #1#
+TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,
+												 float EndShrink, float MaxResampleDistance,
+												 bool bIsClosedInterval, bool bIsLocalSpace);
+*/
+/*
+/**
+ * 获得Spline给定Segment的长度，支持CloseLoop
+ * @param TargetSpline 指定Spine
+ * @param SegmentIndex 需要获取的Segment序号
+ * @return 该Segment长度，当SegmentIndex不合法是返回0
+ #1#
+float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex);
+*/
+
+
+#pragma endregion  DOF
