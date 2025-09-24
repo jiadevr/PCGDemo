@@ -142,9 +142,11 @@ public:
 	};
 
 	FIntersectionSegment(TWeakObjectPtr<USplineComponent>& InOwnerSplines, const FVector& InIntersectionEndPointWS,
-	                     bool bInIsFlowIn, float InRoadWidth) : OwnerSpline(InOwnerSplines),
-	                                                            IntersectionEndPointWS(InIntersectionEndPointWS),
-	                                                            bIsFlowIn(bInIsFlowIn), RoadWidth(InRoadWidth)
+	                     const FRotator& InIntersectionEndRotWS, bool bInIsFlowIn,
+	                     float InRoadWidth) : OwnerSpline(InOwnerSplines),
+	                                          IntersectionEndPointWS(InIntersectionEndPointWS),
+	                                          IntersectionEndRotWS(InIntersectionEndRotWS),
+	                                          bIsFlowIn(bInIsFlowIn), RoadWidth(InRoadWidth)
 	{
 	}
 
@@ -163,6 +165,12 @@ public:
 	 */
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	FVector IntersectionEndPointWS = FVector::Zero();
+
+	/**
+	 * 交点处的Rotation，用于将路口和道路最后一段相接
+	 */
+	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
+	FRotator IntersectionEndRotWS = FRotator::ZeroRotator;
 	/**
 	 * 方向（驶入驶出），以Distance判定
 	 */

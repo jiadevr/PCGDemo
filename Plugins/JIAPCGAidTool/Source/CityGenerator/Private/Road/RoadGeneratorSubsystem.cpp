@@ -69,8 +69,11 @@ void URoadGeneratorSubsystem::OnRoadActorRemoved(AActor* RemovedActor)
 		}
 		for (auto& InfluencedSpline : InfluencedSplines)
 		{
-			IntersectionCompOnSpline[InfluencedSpline].Remove(
-				TWeakObjectPtr<UIntersectionMeshGenerator>(IntersectionDataComp));
+			if (IntersectionCompOnSpline.Contains(InfluencedSpline))
+			{
+				IntersectionCompOnSpline[InfluencedSpline].Remove(
+					TWeakObjectPtr<UIntersectionMeshGenerator>(IntersectionDataComp));
+			}
 		}
 		return;
 	}
@@ -417,14 +420,20 @@ bool URoadGeneratorSubsystem::TearIntersectionToSegments(
 		{
 			FVector FlowOutPointLoc = TargetSpline->GetLocationAtDistanceAlongSpline(
 				DistanceOfNextPoint, ESplineCoordinateSpace::World);
-			OutSegments.Emplace(FIntersectionSegment(IntersectedSplines[i], FlowOutPointLoc, false, 500.0f));
+			FRotator FlowOutPointRot = TargetSpline->GetRotationAtDistanceAlongSpline(
+				DistanceOfNextPoint, ESplineCoordinateSpace::World);
+			OutSegments.Emplace(FIntersectionSegment(IntersectedSplines[i], FlowOutPointLoc, FlowOutPointRot, false,
+			                                         500.0f));
 		}
 		//判断前边一段是不是在样条上
 		if (Distance > UniformDistance)
 		{
 			FVector FlowInPointLoc = TargetSpline->GetLocationAtDistanceAlongSpline(
 				Distance - UniformDistance, ESplineCoordinateSpace::World);
-			OutSegments.Emplace(FIntersectionSegment(IntersectedSplines[i], FlowInPointLoc, true, 500.0f));
+			FRotator FlowInPointRot = TargetSpline->GetRotationAtDistanceAlongSpline(
+				DistanceOfNextPoint, ESplineCoordinateSpace::World);
+			OutSegments.Emplace(FIntersectionSegment(IntersectedSplines[i], FlowInPointLoc, FlowInPointRot, true,
+			                                         500.0f));
 		}
 	}
 	if (OutSegments.IsEmpty())
@@ -584,9 +593,10 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			{
 				uint32 OwnerSegmentIndex = 0;
 				float MinDistance = FLT_MAX;
-				for (int i=0;i<PotentialConnection.Num();++i)
+				for (int i = 0; i < PotentialConnection.Num(); ++i)
 				{
-					FVector SegmentCenter = PotentialConnection[i].StartTransform.GetLocation() + PotentialConnection[i].EndTransform.GetLocation();
+					FVector SegmentCenter = PotentialConnection[i].StartTransform.GetLocation() + PotentialConnection[i]
+						.EndTransform.GetLocation();
 					float DisCenterToConnection = FVector::DistSquared2D(
 						SegmentCenter, IntersectionSegment.IntersectionEndPointWS);
 					if (DisCenterToConnection < MinDistance)
@@ -607,6 +617,9 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				IntersectionSegment.IntersectionEndPointWS, ESplineCoordinateSpace::World);
 			FTransform ConnectionTransform = TargetSplinePtr->GetTransformAtDistanceAlongSpline(
 				DisOfConnectionOnSpline, ESplineCoordinateSpace::World);
+
+			ConnectionTransform.SetRotation(IntersectionSegment.IntersectionEndRotWS.Quaternion());
+
 			InsertInfo.ConnectionTrans = ConnectionTransform;
 			SegmentGroupToConnectionToHead.Emplace(
 				InsertInfo.GroupIndex, InsertInfo);
@@ -651,14 +664,14 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			FString ActorLabel = FString::Printf(TEXT("RoadActor%d"), RoadCounter);
 			AActor* RoadActor = UEditorComponentUtilities::SpawnEmptyActor(ActorLabel, StartTransform);
 			ensureAlways(nullptr!=RoadActor);
-			
+
 			UActorComponent* MeshCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 				RoadActor, UDynamicMeshComponent::StaticClass());
 			UDynamicMeshComponent* MeshComp = Cast<UDynamicMeshComponent>(MeshCompTemp);
 			UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 				RoadActor, URoadMeshGenerator::StaticClass());
 			URoadMeshGenerator* GeneratorComp = Cast<URoadMeshGenerator>(GeneratorCompTemp);
-			
+
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetReferenceSpline(SingleSpline);
 			GeneratorComp->SetRoadInfo(RoadWithConnectInfo);
@@ -762,7 +775,8 @@ TArray<TArray<uint32>> URoadGeneratorSubsystem::GetContinuousIndexSeries(const T
 }
 
 FConnectionInsertInfo URoadGeneratorSubsystem::FindInsertIndexInExistedContinuousSegments(
-	const TArray<TArray<uint32>>& InContinuousSegmentsGroups, const TArray<FSplinePolyLineSegment>& InAllSegmentOnSpline,
+	const TArray<TArray<uint32>>& InContinuousSegmentsGroups,
+	const TArray<FSplinePolyLineSegment>& InAllSegmentOnSpline,
 	const uint32 OwnerSegmentID, const FVector& PointTransWS)
 {
 	FConnectionInsertInfo Result;
@@ -794,6 +808,7 @@ FConnectionInsertInfo URoadGeneratorSubsystem::FindInsertIndexInExistedContinuou
 				//距离两端序号距离一样
 				if (IndexGapToLastEnd == IndexGapToNextStart)
 				{
+					//@TODO:这里触发偶发断言内层返回的序号不在InAllSegmentOnSpline数组中，可能是由于重复生成，待后续排查
 					FVector LocOfLastEnd = InAllSegmentOnSpline[InContinuousSegmentsGroups[i - 1].Last()].EndTransform.
 						GetLocation();
 					float DisToLastEnd = FVector::DistSquared2D(LocOfLastEnd, PointTransWS);

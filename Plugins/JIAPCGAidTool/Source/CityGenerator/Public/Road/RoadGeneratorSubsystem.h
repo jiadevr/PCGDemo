@@ -171,7 +171,7 @@ protected:
 	  * @return 返回是否拆分成功
 	  */
 	bool TearIntersectionToSegments(const FSplineIntersection& InIntersectionInfo,
-	                                TArray<FIntersectionSegment>& OutSegments, float UniformDistance = 500.0f);
+	                                TArray<FIntersectionSegment>& OutSegments, float UniformDistance = 1000.0f);
 
 	TMap<TWeakObjectPtr<USplineComponent>, TSet<TWeakObjectPtr<UIntersectionMeshGenerator>>> IntersectionCompOnSpline;
 

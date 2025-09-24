@@ -142,8 +142,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		FVector2D RightEdge = VectorToCenter.GetSafeNormal().GetRotated(90.0) * IntersectionsData[i].
 			RoadWidth * 0.5;
 		//以FlowDir为基准,右侧两个点
+		//Start是延申分段，没有实际作用，可能考虑删除
 		FVector2D RightMid = CurrentSegmentEndPoint2D + RightEdge;
-		FVector2D RightStart = RightMid - VectorToCenter * SegmentScalar;
+		FVector2D RightStart = RightMid /* - VectorToCenter SegmentScalar*0.1*/;
 		RoadEdgePoints.Emplace(RightStart);
 		FVector2D RightEnd = RightMid + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(RightEnd);
@@ -155,8 +156,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		}
 
 		//以FlowDir为基准,左侧两个点
+		//Start是延申分段，没有实际作用，可能考虑删除
 		FVector2D LeftMid = CurrentSegmentEndPoint2D + RightEdge * -1.0;
-		FVector2D LeftStart = LeftMid - VectorToCenter * SegmentScalar;
+		FVector2D LeftStart = LeftMid /* - VectorToCenter SegmentScalar*0.1*/;
 		RoadEdgePoints.Emplace(LeftStart);
 		FVector2D LeftEnd = LeftMid + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(LeftEnd);
@@ -166,10 +168,11 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
 			                          true);
 		}
-
-		FVector2D ConnectionLoc = CurrentSegmentEndPoint2D - VectorToCenter * SegmentScalar;
+		//这段是为了解决部分情况生成的Mesh无法和路口相接，使用路口内缩的方式将交点向内偏移20cm
+		FVector2D ConnectionLoc = CurrentSegmentEndPoint2D+VectorToCenter.GetSafeNormal()*20.0f /*- VectorToCenterSegmentScalar*0.1*/;
 		FIntersectionSegment RoadInterfaceSegment = IntersectionsData[i];
 		RoadInterfaceSegment.IntersectionEndPointWS = FVector(ConnectionLoc, 0.0);
+		RoadInterfaceSegment.IntersectionEndRotWS = (IntersectionsData[i].IntersectionEndRotWS);
 		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
 		if (bShowDebug)
 		{
