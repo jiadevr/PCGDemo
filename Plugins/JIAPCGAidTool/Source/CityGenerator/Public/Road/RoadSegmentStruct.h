@@ -215,7 +215,7 @@ protected:
 		TArray<FVector2D> Rectangle2DCoords;
 		Rectangle2DCoords.SetNum(4);
 		//逆时针顺序
-		TArray<FVector2D> UnitShape{{0.5, 0.5}, {-0.5, 0.5}, {-0.5, -0.5}, {0.5, -0.5}};
+		TArray<FVector2D> UnitShape{{0.5, 1}, {-0.5, 1}, {-0.5, 0.0}, {0.5, 0.0}};
 		for (int i = 0; i < UnitShape.Num(); ++i)
 		{
 			Rectangle2DCoords[i] = FVector2D(Width, Height) * UnitShape[i];

@@ -267,7 +267,7 @@ TArray<FSplineIntersection> URoadGeneratorSubsystem::FindAllIntersections()
 	//TArray<FSplinePolyLineSegment> 
 	TArray<FSplinePolyLineSegment> AllSegments;
 	//构建四叉树
-	//计算世界包围盒，使用ForceInit可以在后续追加包围盒时自动计算总包围盒大小,注意还有一个枚举值EForceInit容易混淆
+	//计算世界包围盒，使用ForceInit可以在后续追加包围盒时自动计算总包围盒大小
 
 	AllSegments.Reserve(SplineSegmentsInfo.Num() * 2);
 	FBox2D TotalBounds(ForceInit);

@@ -120,7 +120,6 @@ bool URoadMeshGenerator::GenerateMesh()
 	}
 	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
 	FTransform SweepMeshTrans = FTransform::Identity;
-	SweepMeshTrans.SetLocation(FVector(0.0, 0.0, 15.0));
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSweepPolygon(MeshComponentPtr->GetDynamicMesh(),
 	                                                                  GeometryScriptOptions, SweepMeshTrans, SweepShape,
 	                                                                  SweepPointsTrans);
