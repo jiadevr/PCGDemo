@@ -7,6 +7,7 @@ PCG学习及作品集
 2. Struct_ModulesWithMesh：手动创建的结构体包含使用Grammar语法时ModulesInfo的基础内容并附加了Mesh软引用，是各楼层配置DataTable(/Game/CityExampleLearning/MultiFloor/Floors)的源结构
 3. SingleFloor：使用语法、DataTable生成**单层建筑**的简单示例，是MultiFloor的原型
 4. MultiFloor：使用语法、DataTable生成**多层建筑**的示例，在SingleFloor的基础上进行优化和其他输入输出修改，成为PCG_CHA_BaseFloor基础子图表。PCH_MultiFloor层名称进行筛选多次调用基础子图标形成多层建筑。
-[B站专栏](https://www.bilibili.com/opus/1106025637196333056)
+[[UE5]CitySample复刻计划(1)-PCGGrammar尝试](https://www.bilibili.com/opus/1106025637196333056)
 ## 程序化道路生成
-正在施工中，预计本周发布B站专栏
+基于用户输入样条生成道路及交汇路口，使用UEC++实现。
+[[UE5]CitySample复刻计划(2)-纯UECpp下的道路生成](https://www.bilibili.com/opus/1116054145300693027)
