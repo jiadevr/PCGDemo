@@ -35,7 +35,7 @@ public:
 		return OccupiedBox;
 	}
 
-	bool GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline,TArray<FIntersectionSegment>& OutConnections);
+	TArray<FIntersectionSegment> GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline);
 	
 	/**
 	 * IMeshGeneratorInterface接口，根据类内的IntersectionsData数据调用同一Owner下挂载的UDynamicMeshComponent创建路口Mesh
@@ -74,4 +74,6 @@ protected:
 	TArray<FIntersectionSegment> IntersectionsData;
 	
 	TMultiMap<TWeakObjectPtr<USplineComponent>,FIntersectionSegment>ConnectionLocations;
+
+	static int32 IntersectionGlobalIndex;
 };

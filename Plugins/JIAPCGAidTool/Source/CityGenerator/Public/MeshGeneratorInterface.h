@@ -25,6 +25,10 @@ public:
 
 	virtual bool GenerateMesh() =0;
 
+	int32 GetGlobalIndex()const{return GlobalIndex;};
+
 protected:
 	TWeakObjectPtr<UDynamicMeshComponent> MeshComponent;
+
+	int32 GlobalIndex=0;
 };

@@ -12,6 +12,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Road/RoadGeometryUtilities.h"
 
+int32 UIntersectionMeshGenerator::IntersectionGlobalIndex = 0;
 static TAutoConsoleVariable<bool> CVarOnlyDebugPoint(
 	TEXT("RIG.OnlyDebugPoint"), false,TEXT("Only Generate Points Ignore Meshes"), ECVF_Default);
 static TAutoConsoleVariable<bool> CVarHideGraphicDebug(
@@ -23,6 +24,8 @@ UIntersectionMeshGenerator::UIntersectionMeshGenerator()
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
+	GlobalIndex = IntersectionGlobalIndex;
+	IntersectionGlobalIndex++;
 }
 
 void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData)
@@ -30,15 +33,14 @@ void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FInter
 	IntersectionsData = InIntersectionData;
 }
 
-bool UIntersectionMeshGenerator::GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline,
-                                                        TArray<FIntersectionSegment>& OutConnections)
+TArray<FIntersectionSegment> UIntersectionMeshGenerator::GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline)
 {
-	if (!ConnectionLocations.Contains(InOwnerSpline))
+	TArray<FIntersectionSegment> Results;
+	if (ConnectionLocations.Contains(InOwnerSpline))
 	{
-		return false;
+		ConnectionLocations.MultiFind(InOwnerSpline, Results);
 	}
-	ConnectionLocations.MultiFind(InOwnerSpline, OutConnections);
-	return !OutConnections.IsEmpty();
+	return Results;
 }
 
 bool UIntersectionMeshGenerator::GenerateMesh()
@@ -169,10 +171,12 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			                          true);
 		}
 		//这段是为了解决部分情况生成的Mesh无法和路口相接，使用路口内缩的方式将交点向内偏移20cm
-		FVector2D ConnectionLoc = CurrentSegmentEndPoint2D+VectorToCenter.GetSafeNormal()*20.0f /*- VectorToCenterSegmentScalar*0.1*/;
+		FVector2D ConnectionLoc = CurrentSegmentEndPoint2D + VectorToCenter.GetSafeNormal() * 20.0f
+			/*- VectorToCenterSegmentScalar*0.1*/;
 		FIntersectionSegment RoadInterfaceSegment = IntersectionsData[i];
 		RoadInterfaceSegment.IntersectionEndPointWS = FVector(ConnectionLoc, 0.0);
 		RoadInterfaceSegment.IntersectionEndRotWS = (IntersectionsData[i].IntersectionEndRotWS);
+		RoadInterfaceSegment.OwnerGlobalIndex=GetGlobalIndex();
 		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
 		if (bShowDebug)
 		{

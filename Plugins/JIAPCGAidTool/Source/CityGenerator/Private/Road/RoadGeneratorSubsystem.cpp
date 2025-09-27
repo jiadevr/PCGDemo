@@ -27,6 +27,7 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		this, &URoadGeneratorSubsystem::OnLevelComponentMoved);
 	RoadActorRemovedHandle = ComponentMoveHandle = GEditor->OnLevelActorDeleted().AddUObject(
 		this, &URoadGeneratorSubsystem::OnRoadActorRemoved);
+	RoadGraph = NewObject<URoadGraph>();
 }
 
 void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType)
@@ -86,6 +87,7 @@ void URoadGeneratorSubsystem::Deinitialize()
 	RoadIntersectionsComps.Empty();
 	GEditor->OnComponentTransformChanged().Remove(ComponentMoveHandle);
 	GEditor->OnLevelActorDeleted().Remove(RoadActorRemovedHandle);
+	RoadGraph = nullptr;
 	Super::Deinitialize();
 }
 
@@ -518,6 +520,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			continue;
 		}
 		//找到所有Segment，然后从其中移除被交叉路口占用的
+
+		//Spline上的全部Segments
 		TArray<FSplinePolyLineSegment> AllSegmentOnSpline;
 		TMap<uint32, FSplinePolyLineSegment> IndexToAllSegments;
 		//在这里获得的值是有序的
@@ -534,8 +538,10 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				AllSegmentsIndex.Emplace(Segment.GetGlobalIndex());
 			}
 		}
-		//取交叉路口占用的，同时把交接路口取出来
+		//取交汇路口占用的，同时把交接路口取出来
+		//记录交汇路口占据的Segment编号
 		TArray<uint32> OccupiedSegmentsIndex;
+		//记录交汇路口和道路的连接点信息
 		TArray<FIntersectionSegment> RoadIntersectionConnectionInfo;
 		if (IntersectionCompOnSpline.Contains(SingleSpline))
 		{
@@ -555,9 +561,10 @@ void URoadGeneratorSubsystem::GenerateRoads()
 					}
 				}
 				//所在样条上**所有**的交叉坐标
-				MeshGeneratorPtr->GetRoadConnectionPoint(SingleSpline, RoadIntersectionConnectionInfo);
+				RoadIntersectionConnectionInfo.Append(MeshGeneratorPtr->GetRoadConnectionPoint(SingleSpline));
 			}
 		}
+		//切分出的连续分段Segment组
 		TArray<TArray<uint32>> ContinuousSegmentsGroups;
 		//去除被占用的，获取连续的Segments数据,均使用GlobalID作为区分
 		if (!OccupiedSegmentsIndex.IsEmpty())
@@ -589,6 +596,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				             5.0f);
 				continue;
 			}
+			//有多个可能性，根据距离判定究竟属于哪个Segment，放到PotentialConnection[0]
 			if (PotentialConnection.Num() != 1)
 			{
 				uint32 OwnerSegmentIndex = 0;
@@ -613,6 +621,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			FConnectionInsertInfo InsertInfo = FindInsertIndexInExistedContinuousSegments(
 				ContinuousSegmentsGroups, AllSegmentOnSpline,
 				PotentialConnection[0].GetGlobalIndex(), IntersectionSegment.IntersectionEndPointWS);
+			InsertInfo.IntersectionGlobalIndex = IntersectionSegment.OwnerGlobalIndex;
 			float DisOfConnectionOnSpline = TargetSplinePtr->GetDistanceAlongSplineAtLocation(
 				IntersectionSegment.IntersectionEndPointWS, ESplineCoordinateSpace::World);
 			FTransform ConnectionTransform = TargetSplinePtr->GetTransformAtDistanceAlongSpline(
@@ -637,8 +646,10 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			{
 				RoadSegmentTransforms.Emplace(IndexToAllSegments[ContinuousSegments[j]].EndTransform);
 			}
-			//生成衔接位置信息
+			//生成衔接位置信息,用Transform初始化结构体
 			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
+			TArray<uint32> ConnectedIntersections;
+			ConnectedIntersections.SetNum(2);
 			if (SegmentGroupToConnectionToHead.Contains(i))
 			{
 				TArray<FConnectionInsertInfo> Connections;
@@ -651,11 +662,13 @@ void URoadGeneratorSubsystem::GenerateRoads()
 						{
 							RoadWithConnectInfo.bHasHeadConnection = true;
 							RoadWithConnectInfo.HeadConnectionTrans = Connection.ConnectionTrans;
+							ConnectedIntersections[0] = Connection.IntersectionGlobalIndex;
 						}
 						else
 						{
 							RoadWithConnectInfo.bHasTailConnection = true;
 							RoadWithConnectInfo.TailConnectionTrans = Connection.ConnectionTrans;
+							ConnectedIntersections[1] = Connection.IntersectionGlobalIndex;
 						}
 					}
 				}
@@ -677,6 +690,12 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			GeneratorComp->SetRoadInfo(RoadWithConnectInfo);
 			RoadMeshGenerators.Emplace(GeneratorComp);
 			RoadCounter++;
+
+			//把对道路和附属节点加入树
+			if (nullptr!=RoadGraph)
+			{
+				RoadGraph->AddEdge(ConnectedIntersections[0], ConnectedIntersections[1], GeneratorComp->GetGlobalIndex());
+			}
 		}
 	}
 	//4.调用生成

@@ -63,4 +63,6 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	FLaneMeshInfo RoadInfo{500.0f};
+	
+	static int32 IntersectionGlobalIndex;
 };

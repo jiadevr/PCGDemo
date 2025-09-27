@@ -181,6 +181,8 @@ public:
 	 */
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	float RoadWidth = 0;
+
+	uint32 OwnerGlobalIndex=UINT32_ERROR;
 };
 
 //道路名称枚举

@@ -17,7 +17,9 @@ class USplineComponent;
  */
 struct FConnectionInsertInfo
 {
-	FConnectionInsertInfo(){};
+	FConnectionInsertInfo()
+	{
+	};
 	/**
 	 * 插入到二维数组ContinuousSegmentsGroups中一维的哪一个元素，即作为哪个连续SegmentsGroup的头或尾
 	 */
@@ -30,6 +32,109 @@ struct FConnectionInsertInfo
 	* 连接点Transform
 	*/
 	FTransform ConnectionTrans;
+
+	int32 IntersectionGlobalIndex = INT32_ERROR;
+};
+
+
+UCLASS()
+class URoadGraph final : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	struct FEdge
+	{
+		int32 ToNodeIndex;
+		int32 EdgeIndex;
+
+		FEdge(int32 InToNodeIndex, int32 InEdgeIndex) :
+			ToNodeIndex(InToNodeIndex), EdgeIndex(InEdgeIndex)
+		{
+		};
+	};
+
+	URoadGraph()
+	{
+	}
+
+	URoadGraph(int32 InNodeNum)
+	{
+		Graph.SetNum(InNodeNum);
+	}
+
+	virtual ~URoadGraph() override
+	{
+		Graph.Empty();
+	}
+
+	void AddEdge(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex)
+	{
+		if (FromNodeIndex == INT32_ERROR || ToNodeIndex == INT32_ERROR)
+		{
+			return;
+		}
+
+		if (Graph.IsValidIndex(FromNodeIndex))
+		{
+			Graph[FromNodeIndex].Emplace(FEdge(ToNodeIndex, EdgeIndex));
+		}
+		else
+		{
+			if (FromNodeIndex>Graph.Num() - 1)
+			{
+				Graph.SetNum(FromNodeIndex+1);
+			}
+			Graph[FromNodeIndex].Emplace(FEdge(ToNodeIndex, EdgeIndex));
+		}
+	}
+
+	void RemoveEdge(int32 FromNode, int32 ToNode)
+	{
+		TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
+		for (int32 i = 0; i < AllConnectedNodes.Num(); ++i)
+		{
+			if (AllConnectedNodes[i].ToNodeIndex == ToNode)
+			{
+				AllConnectedNodes.RemoveAtSwap(i);
+				break;
+			}
+		}
+	}
+
+	bool HasEdge(int32 FromNode, int32 ToNode) const
+	{
+		const TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
+		for (int32 i = 0; i < AllConnectedNodes.Num(); ++i)
+		{
+			if (AllConnectedNodes[i].ToNodeIndex == ToNode)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	int32 GetRoadIndex(int32 FromNode, int32 ToNode)
+	{
+		int32 RoadIndex = INT32_ERROR;
+		if (HasEdge(FromNode, ToNode))
+		{
+			RoadIndex = Graph[FromNode][ToNode].EdgeIndex;
+		}
+		return RoadIndex;
+	}
+
+	TArray<FEdge> GetAllNeighbour(int32 FromNode)
+	{
+		return Graph[FromNode];
+	}
+
+protected:
+	/**
+	 * 稀疏图，使用邻接表实现
+	 */
+	TArray<TArray<FEdge>> Graph;
 };
 
 /**
@@ -67,6 +172,10 @@ public:
 	FDelegateHandle RoadActorRemovedHandle;
 
 	virtual void Deinitialize() override;
+
+	//EidtorSubsystem启动顺序考前，不能直接成员类
+	UPROPERTY()
+	URoadGraph* RoadGraph = nullptr;
 
 #pragma region GenerateIntersection
 
@@ -214,11 +323,12 @@ protected:
 	 * @param PointTransWS 焦点位置
 	 * @return 
 	 */
-	FConnectionInsertInfo FindInsertIndexInExistedContinuousSegments(const TArray<TArray<uint32>>& InContinuousSegmentsGroups,
-	                                                                 const TArray<FSplinePolyLineSegment>&
-	                                                                 InAllSegmentOnSpline,
-	                                                                 const uint32 OwnerSegmentID,
-	                                                                 const FVector& PointTransWS);
+	FConnectionInsertInfo FindInsertIndexInExistedContinuousSegments(
+		const TArray<TArray<uint32>>& InContinuousSegmentsGroups,
+		const TArray<FSplinePolyLineSegment>&
+		InAllSegmentOnSpline,
+		const uint32 OwnerSegmentID,
+		const FVector& PointTransWS);
 
 #pragma endregion GenerateRoad
 };
