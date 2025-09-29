@@ -81,9 +81,9 @@ public:
 		}
 		else
 		{
-			if (FromNodeIndex>Graph.Num() - 1)
+			if (FromNodeIndex > Graph.Num() - 1)
 			{
-				Graph.SetNum(FromNodeIndex+1);
+				Graph.SetNum(FromNodeIndex + 1);
 			}
 			Graph[FromNodeIndex].Emplace(FEdge(ToNodeIndex, EdgeIndex));
 		}
@@ -128,6 +128,27 @@ public:
 	TArray<FEdge> GetAllNeighbour(int32 FromNode)
 	{
 		return Graph[FromNode];
+	}
+
+	void PrintConnectionToLog()
+	{
+		if (Graph.IsEmpty())
+		{
+			UE_LOG(LogTemp, Display, TEXT("Graph is empty"));
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("Begin To Print Graph Connections"));
+		for (int32 i = 0; i < Graph.Num(); i++)
+		{
+			for (int j = 0; j < Graph[i].Num(); ++j)
+			{
+				int32 ToNode = Graph[i][j].ToNodeIndex;
+				int32 ByEdge = Graph[i][j].EdgeIndex;
+				FString SinglePath = FString::Printf(TEXT("[%d]-(%d)-[%d],"), i, ByEdge, ToNode);
+				UE_LOG(LogTemp, Display, TEXT("%s"), *SinglePath);
+			}
+		}
+		UE_LOG(LogTemp, Display, TEXT("Print Graph Connections Finished"));
 	}
 
 protected:
@@ -300,7 +321,7 @@ public:
 	void GenerateRoads();
 
 	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
-	
+
 
 	/**
 	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素，两数组要求元素唯一
@@ -312,8 +333,6 @@ public:
 	TArray<TArray<uint32>> GetContinuousIndexSeries(const TArray<uint32>& AllSegmentIndex, TArray<uint32>& BreakPoints);
 
 protected:
-
-
 	/**
 	 * 在已有的连续数组中找到给定点所属的Segment信息，用于确定衔接到路口的点应当作为哪一个连续SegmentsGroup的附属数据以及应当插入的位置
 	 * 具体数据插入位于RoadMeshGenerator，请勿使用该结果在本类中进行数据插入，Global新增会影响分割结果
@@ -331,6 +350,12 @@ protected:
 		const FVector& PointTransWS);
 
 #pragma endregion GenerateRoad
+
+	void AddDebugTextRender(AActor* TargetActor, const FColor& TextColor, const FString& Text);
+
+public:
+	UFUNCTION(BlueprintCallable)
+	void PrintGraphConnection();
 };
 
 template <typename T>

@@ -8,6 +8,7 @@
 #include "NotifyUtilities.h"
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SplineComponent.h"
+#include "Components/TextRenderComponent.h"
 #include "GeometryScript/MeshNormalsFunctions.h"
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -18,6 +19,8 @@
 
 /*static TAutoConsoleVariable<float> PolyLineSubdivisionDis(
 	TEXT("SplineToPolySampleDis"), 50.0f,TEXT("Sample Distance Convert Spline To PolyLine"), ECVF_Default);*/
+static TAutoConsoleVariable<bool> AddTextRender(
+	TEXT("AddTextRenderToActor"), true,TEXT("Add TextRenderComponent To Display GraphIndex"));
 
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -140,6 +143,12 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 			ensureAlwaysMsgf(GeneratorComp!=nullptr, TEXT("Error:Create IntersectionMeshGeneratorComp Failed"));
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetIntersectionSegmentsData(IntersectionBuildData);
+
+			if (true == AddTextRender.GetValueOnGameThread())
+			{
+				AddDebugTextRender(IntersectionActor, FColor::Turquoise,
+				                   FString::Printf(TEXT("II:%d"), GeneratorComp->GetGlobalIndex()));
+			}
 
 			RoadIntersectionsComps.Emplace(GeneratorComp);
 			for (const FIntersectionSegment& BuildData : IntersectionBuildData)
@@ -691,10 +700,16 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			RoadMeshGenerators.Emplace(GeneratorComp);
 			RoadCounter++;
 
-			//把对道路和附属节点加入树
-			if (nullptr!=RoadGraph)
+			if (true == AddTextRender.GetValueOnGameThread())
 			{
-				RoadGraph->AddEdge(ConnectedIntersections[0], ConnectedIntersections[1], GeneratorComp->GetGlobalIndex());
+				AddDebugTextRender(RoadActor, FColor::Yellow,
+				                   FString::Printf(TEXT("RI:%d"), GeneratorComp->GetGlobalIndex()));
+			}
+			//把对道路和附属节点加入树
+			if (nullptr != RoadGraph)
+			{
+				RoadGraph->AddEdge(ConnectedIntersections[0], ConnectedIntersections[1],
+				                   GeneratorComp->GetGlobalIndex());
 			}
 		}
 	}
@@ -868,6 +883,7 @@ FConnectionInsertInfo URoadGeneratorSubsystem::FindInsertIndexInExistedContinuou
 	return Result;
 }
 
+
 TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponent* TargetSpline)
 {
 	TArray<FTransform> Results;
@@ -925,11 +941,29 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 	return Results;
 }
 
-
-
-
-
 #pragma endregion GenerateRoad
+
+void URoadGeneratorSubsystem::AddDebugTextRender(AActor* TargetActor, const FColor& TextColor, const FString& Text)
+{
+	UActorComponent* IndexTexRenderTemp = UEditorComponentUtilities::AddComponentInEditor(
+		TargetActor, UTextRenderComponent::StaticClass());
+	UTextRenderComponent* IndexTexRender = Cast<UTextRenderComponent>(IndexTexRenderTemp);
+	IndexTexRender->SetRelativeRotation(FRotator(90.0, 0.0, 0.0));
+	IndexTexRender->SetRelativeLocation(FVector(0.0, 0.0, 50.0));
+	IndexTexRender->SetText(FText::FromString(Text));
+	IndexTexRender->SetTextRenderColor(TextColor);
+	IndexTexRender->SetWorldSize(800.0);
+	IndexTexRender->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
+	IndexTexRender->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
+}
+
+void URoadGeneratorSubsystem::PrintGraphConnection()
+{
+	if (nullptr!=RoadGraph)
+	{
+		RoadGraph->PrintConnectionToLog();
+	}
+}
 
 # pragma region DOF
 /*
