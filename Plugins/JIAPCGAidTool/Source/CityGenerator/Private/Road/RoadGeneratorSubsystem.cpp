@@ -657,8 +657,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			}
 			//生成衔接位置信息,用Transform初始化结构体
 			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
-			TArray<uint32> ConnectedIntersections;
-			ConnectedIntersections.SetNum(2);
+			TArray<int32> ConnectedIntersections;
+			ConnectedIntersections.Init(INT32_ERROR,2);
 			if (SegmentGroupToConnectionToHead.Contains(i))
 			{
 				TArray<FConnectionInsertInfo> Connections;
