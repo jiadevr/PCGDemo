@@ -10,7 +10,7 @@
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 
-int32 URoadMeshGenerator::IntersectionGlobalIndex = 0;
+int32 URoadMeshGenerator::IntersectionGlobalIndex = -1;
 // Sets default values for this component's properties
 URoadMeshGenerator::URoadMeshGenerator()
 {

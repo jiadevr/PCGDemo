@@ -31,6 +31,7 @@ void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	RoadActorRemovedHandle = ComponentMoveHandle = GEditor->OnLevelActorDeleted().AddUObject(
 		this, &URoadGeneratorSubsystem::OnRoadActorRemoved);
 	RoadGraph = NewObject<URoadGraph>();
+	WorldChangeDelegate = GEditor->OnWorldDestroyed().AddUObject(this, &URoadGeneratorSubsystem::OnWorldChanged);
 }
 
 void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType)
@@ -50,6 +51,15 @@ void URoadGeneratorSubsystem::OnLevelComponentMoved(USceneComponent* MovedComp, 
 		bNeedRefreshSegmentData = true;
 	}
 }
+
+void URoadGeneratorSubsystem::OnWorldChanged(UWorld* World)
+{
+	if (RoadGraph)
+	{
+		RoadGraph->RemoveAllEdges();
+	}
+}
+
 
 void URoadGeneratorSubsystem::OnRoadActorRemoved(AActor* RemovedActor)
 {
@@ -90,6 +100,7 @@ void URoadGeneratorSubsystem::Deinitialize()
 	RoadIntersectionsComps.Empty();
 	GEditor->OnComponentTransformChanged().Remove(ComponentMoveHandle);
 	GEditor->OnLevelActorDeleted().Remove(RoadActorRemovedHandle);
+	GEditor->OnWorldDestroyed().Remove(WorldChangeDelegate);
 	RoadGraph = nullptr;
 	Super::Deinitialize();
 }
@@ -644,10 +655,52 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			//不要直接在这里插入（相当于一边遍历一边修改），会破坏上面的算法
 		}
 
+		//如果是闭合曲线把Segments合并
+		if (SingleSpline->IsClosedLoop())
+		{
+			if (ContinuousSegmentsGroups.Num() > 1)
+			{
+				bool bCanMerge = (AllSegmentOnSpline[0].GetGlobalIndex() == ContinuousSegmentsGroups[0][0]);
+				bCanMerge &= (AllSegmentOnSpline.Last(0).GetGlobalIndex() == ContinuousSegmentsGroups.Last(0).Last(0));
+
+				if (bCanMerge)
+				{
+					//合并到第一组，可以避免后续组的去除
+					TArray<uint32> NewFirstGroup;
+					int32 LastGroupLength = ContinuousSegmentsGroups.Last(0).Num();
+					NewFirstGroup.SetNum(ContinuousSegmentsGroups[0].Num() + ContinuousSegmentsGroups.Last(0).Num());
+					FMemory::Memcpy(NewFirstGroup.GetData(), ContinuousSegmentsGroups.Last(0).GetData(),
+					                LastGroupLength * sizeof(uint32));
+					FMemory::Memcpy(NewFirstGroup.GetData() + LastGroupLength,
+					                ContinuousSegmentsGroups[0].GetData(),
+					                ContinuousSegmentsGroups[0].Num() * sizeof(uint32));
+					ContinuousSegmentsGroups[0] = NewFirstGroup;
+					//调整衔接内容,能衔接的情况必然是第一组元素去除尾部或最后一组元素去除头部；因为是把最后一组元素合并到头部，所以只需要移动一组
+					if (SegmentGroupToConnectionToHead.Contains(ContinuousSegmentsGroups.Num() - 1))
+					{
+						TArray<FConnectionInsertInfo> HeadInsertsOfLastGroup;
+						SegmentGroupToConnectionToHead.MultiFind(ContinuousSegmentsGroups.Num() - 1,
+						                                         HeadInsertsOfLastGroup);
+						//插入元素必然在头部，理论上应该只有一个元素
+						for (auto& Insert : HeadInsertsOfLastGroup)
+						{
+							Insert.GroupIndex = 0;
+							SegmentGroupToConnectionToHead.Emplace(0, Insert);
+							ensureAlwaysMsgf(Insert.bConnectToGroupHead==true, TEXT("Error Insert Place,Please Check"));
+						}
+						SegmentGroupToConnectionToHead.Remove(ContinuousSegmentsGroups.Num() - 1);
+					}
+					//移除最后一组
+					ContinuousSegmentsGroups.RemoveAt(ContinuousSegmentsGroups.Num() - 1);
+				}
+			}
+		}
+
 		//3.创建Actor负载信息
 		for (int32 i = 0; i < ContinuousSegmentsGroups.Num(); ++i)
 		{
 			TArray<uint32>& ContinuousSegments = ContinuousSegmentsGroups[i];
+			//把所有Segments创建路径
 			TArray<FTransform> RoadSegmentTransforms;
 			FTransform StartTransform = IndexToAllSegments[ContinuousSegments[0]].StartTransform;
 			RoadSegmentTransforms.Emplace(StartTransform);
@@ -658,7 +711,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			//生成衔接位置信息,用Transform初始化结构体
 			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
 			TArray<int32> ConnectedIntersections;
-			ConnectedIntersections.Init(INT32_ERROR,2);
+			ConnectedIntersections.Init(INT32_ERROR, 2);
 			if (SegmentGroupToConnectionToHead.Contains(i))
 			{
 				TArray<FConnectionInsertInfo> Connections;
@@ -959,7 +1012,7 @@ void URoadGeneratorSubsystem::AddDebugTextRender(AActor* TargetActor, const FCol
 
 void URoadGeneratorSubsystem::PrintGraphConnection()
 {
-	if (nullptr!=RoadGraph)
+	if (nullptr != RoadGraph)
 	{
 		RoadGraph->PrintConnectionToLog();
 	}

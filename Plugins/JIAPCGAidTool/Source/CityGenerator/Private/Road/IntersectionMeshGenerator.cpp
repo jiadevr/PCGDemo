@@ -12,7 +12,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Road/RoadGeometryUtilities.h"
 
-int32 UIntersectionMeshGenerator::IntersectionGlobalIndex = 0;
+int32 UIntersectionMeshGenerator::IntersectionGlobalIndex = -1;
 static TAutoConsoleVariable<bool> CVarOnlyDebugPoint(
 	TEXT("RIG.OnlyDebugPoint"), false,TEXT("Only Generate Points Ignore Meshes"), ECVF_Default);
 static TAutoConsoleVariable<bool> CVarHideGraphicDebug(

@@ -102,6 +102,11 @@ public:
 		}
 	}
 
+	void RemoveAllEdges()
+	{
+		Graph.Empty();
+	}
+	
 	bool HasEdge(int32 FromNode, int32 ToNode) const
 	{
 		const TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
@@ -183,6 +188,10 @@ public:
 	void OnLevelComponentMoved(USceneComponent* MovedComp, ETeleportType MoveType);
 
 	FDelegateHandle ComponentMoveHandle;
+
+	void OnWorldChanged(UWorld* World);
+
+	FDelegateHandle WorldChangeDelegate;
 
 	/**
 	 * 绑定OnLevelActorDeleted()主要用于解决
