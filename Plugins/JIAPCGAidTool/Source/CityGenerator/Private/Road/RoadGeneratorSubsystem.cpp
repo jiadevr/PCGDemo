@@ -22,6 +22,124 @@
 static TAutoConsoleVariable<bool> AddTextRender(
 	TEXT("AddTextRenderToActor"), true,TEXT("Add TextRenderComponent To Display GraphIndex"));
 
+URoadGraph::~URoadGraph()
+{
+	RemoveAllEdges();
+}
+
+void URoadGraph::AddEdge(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex)
+{
+	if (FromNodeIndex == INT32_ERROR || ToNodeIndex == INT32_ERROR)
+	{
+		return;
+	}
+
+	if (Graph.IsValidIndex(FromNodeIndex))
+	{
+		Graph[FromNodeIndex].Emplace(FRoadEdge(ToNodeIndex, EdgeIndex));
+	}
+	else
+	{
+		if (FromNodeIndex > Graph.Num() - 1)
+		{
+			Graph.SetNum(FromNodeIndex + 1);
+		}
+		Graph[FromNodeIndex].Emplace(FRoadEdge(ToNodeIndex, EdgeIndex));
+	}
+}
+
+void URoadGraph::AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 EdgeIndex)
+{
+	AddEdge(NodeAIndex, NodeBIndex, EdgeIndex);
+	AddEdge(NodeBIndex, NodeAIndex, EdgeIndex);
+}
+
+void URoadGraph::RemoveEdge(int32 FromNode, int32 ToNode)
+{
+	TArray<FRoadEdge>& AllConnectedNodes = Graph[FromNode];
+	for (int32 i = 0; i < AllConnectedNodes.Num(); ++i)
+	{
+		if (AllConnectedNodes[i].ToNodeIndex == ToNode)
+		{
+			AllConnectedNodes.RemoveAtSwap(i);
+			break;
+		}
+	}
+}
+
+void URoadGraph::RemoveAllEdges()
+{
+	Graph.Empty();
+}
+
+int32 URoadGraph::GetEdgesCount()
+{
+	int32 EdgeCount=0;
+	for (const auto NeighboursOfVertex : Graph)
+	{
+		EdgeCount+=NeighboursOfVertex.Num();
+	}
+	return EdgeCount;
+}
+
+bool URoadGraph::HasEdge(int32 FromNode, int32 ToNode) const
+{
+	const TArray<FRoadEdge>& AllConnectedNodes = Graph[FromNode];
+	for (int32 i = 0; i < AllConnectedNodes.Num(); ++i)
+	{
+		if (AllConnectedNodes[i].ToNodeIndex == ToNode)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+int32 URoadGraph::GetRoadIndex(int32 FromNode, int32 ToNode)
+{
+	int32 RoadIndex = INT32_ERROR;
+	if (HasEdge(FromNode, ToNode))
+	{
+		RoadIndex = Graph[FromNode][ToNode].EdgeIndex;
+	}
+	return RoadIndex;
+}
+
+TArray<URoadGraph::FRoadEdge> URoadGraph::GetAllNeighbour(int32 FromNode) const
+{
+	return Graph[FromNode];
+}
+
+void URoadGraph::PrintConnectionToLog()
+{
+	if (Graph.IsEmpty())
+	{
+		UE_LOG(LogTemp, Display, TEXT("Graph is empty"));
+		return;
+	}
+	UE_LOG(LogTemp, Display, TEXT("Begin To Print Graph Connections"));
+	for (int32 i = 0; i < Graph.Num(); i++)
+	{
+		for (int j = 0; j < Graph[i].Num(); ++j)
+		{
+			int32 ToNode = Graph[i][j].ToNodeIndex;
+			int32 ByEdge = Graph[i][j].EdgeIndex;
+			FString SinglePath = FString::Printf(TEXT("[%d]-(%d)-[%d],"), i, ByEdge, ToNode);
+			UE_LOG(LogTemp, Display, TEXT("%s"), *SinglePath);
+		}
+	}
+	UE_LOG(LogTemp, Display, TEXT("Print Graph Connections Finished"));
+}
+
+void URoadGraph::SortNeighbours()
+{
+	for (auto& NeighbourOfVertex : Graph)
+	{
+			
+	}
+}
+
+
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -1014,6 +1132,20 @@ void URoadGeneratorSubsystem::AddDebugTextRender(AActor* TargetActor, const FCol
 	IndexTexRender->SetWorldSize(800.0);
 	IndexTexRender->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
 	IndexTexRender->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
+}
+
+TArray<FBlockLinkInfo> URoadGeneratorSubsystem::GetSurfaceInRoadGraph()
+{
+	TArray<FBlockLinkInfo> Results;
+	if (nullptr==RoadGraph)
+	{
+		return Results;
+	}
+	//需要排序邻接表
+	
+	TArray<bool> bVisited;
+	bVisited.Init(false,RoadGraph->GetEdgesCount());
+	return Results;
 }
 
 void URoadGeneratorSubsystem::PrintGraphConnection()

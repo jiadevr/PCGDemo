@@ -43,12 +43,12 @@ class URoadGraph final : public UObject
 	GENERATED_BODY()
 
 public:
-	struct FEdge
+	struct FRoadEdge
 	{
 		int32 ToNodeIndex;
 		int32 EdgeIndex;
 
-		FEdge(int32 InToNodeIndex, int32 InEdgeIndex) :
+		FRoadEdge(int32 InToNodeIndex, int32 InEdgeIndex) :
 			ToNodeIndex(InToNodeIndex), EdgeIndex(InEdgeIndex)
 		{
 		};
@@ -57,116 +57,41 @@ public:
 	URoadGraph()
 	{
 	}
+	virtual ~URoadGraph() override;
 
-	URoadGraph(int32 InNodeNum)
-	{
-		Graph.SetNum(InNodeNum);
-	}
+	void AddEdge(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex);
 
-	virtual ~URoadGraph() override
-	{
-		Graph.Empty();
-	}
+	void AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 EdgeIndex);
 
-	void AddEdge(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex)
-	{
-		if (FromNodeIndex == INT32_ERROR || ToNodeIndex == INT32_ERROR)
-		{
-			return;
-		}
+	void RemoveEdge(int32 FromNode, int32 ToNode);
 
-		if (Graph.IsValidIndex(FromNodeIndex))
-		{
-			Graph[FromNodeIndex].Emplace(FEdge(ToNodeIndex, EdgeIndex));
-		}
-		else
-		{
-			if (FromNodeIndex > Graph.Num() - 1)
-			{
-				Graph.SetNum(FromNodeIndex + 1);
-			}
-			Graph[FromNodeIndex].Emplace(FEdge(ToNodeIndex, EdgeIndex));
-		}
-	}
+	void RemoveAllEdges();
 
-	void AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 EdgeIndex)
-	{
-		AddEdge(NodeAIndex, NodeBIndex, EdgeIndex);
-		AddEdge(NodeBIndex, NodeAIndex, EdgeIndex);
-	}
+	int32 GetEdgesCount();
+	
+	bool HasEdge(int32 FromNode, int32 ToNode) const;
 
-	void RemoveEdge(int32 FromNode, int32 ToNode)
-	{
-		TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
-		for (int32 i = 0; i < AllConnectedNodes.Num(); ++i)
-		{
-			if (AllConnectedNodes[i].ToNodeIndex == ToNode)
-			{
-				AllConnectedNodes.RemoveAtSwap(i);
-				break;
-			}
-		}
-	}
+	int32 GetRoadIndex(int32 FromNode, int32 ToNode);
 
-	void RemoveAllEdges()
-	{
-		Graph.Empty();
-	}
+	TArray<FRoadEdge> GetAllNeighbour(int32 FromNode) const;
 
-	bool HasEdge(int32 FromNode, int32 ToNode) const
-	{
-		const TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
-		for (int32 i = 0; i < AllConnectedNodes.Num(); ++i)
-		{
-			if (AllConnectedNodes[i].ToNodeIndex == ToNode)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
+	void PrintConnectionToLog();
 
-	int32 GetRoadIndex(int32 FromNode, int32 ToNode)
-	{
-		int32 RoadIndex = INT32_ERROR;
-		if (HasEdge(FromNode, ToNode))
-		{
-			RoadIndex = Graph[FromNode][ToNode].EdgeIndex;
-		}
-		return RoadIndex;
-	}
-
-	TArray<FEdge> GetAllNeighbour(int32 FromNode)
-	{
-		return Graph[FromNode];
-	}
-
-	void PrintConnectionToLog()
-	{
-		if (Graph.IsEmpty())
-		{
-			UE_LOG(LogTemp, Display, TEXT("Graph is empty"));
-			return;
-		}
-		UE_LOG(LogTemp, Display, TEXT("Begin To Print Graph Connections"));
-		for (int32 i = 0; i < Graph.Num(); i++)
-		{
-			for (int j = 0; j < Graph[i].Num(); ++j)
-			{
-				int32 ToNode = Graph[i][j].ToNodeIndex;
-				int32 ByEdge = Graph[i][j].EdgeIndex;
-				FString SinglePath = FString::Printf(TEXT("[%d]-(%d)-[%d],"), i, ByEdge, ToNode);
-				UE_LOG(LogTemp, Display, TEXT("%s"), *SinglePath);
-			}
-		}
-		UE_LOG(LogTemp, Display, TEXT("Print Graph Connections Finished"));
-	}
-
+	void SortNeighbours();
+	
 protected:
 	/**
 	 * 稀疏图，使用邻接表实现
 	 */
-	TArray<TArray<FEdge>> Graph;
+	TArray<TArray<FRoadEdge>> Graph;
+};
+
+USTRUCT()
+struct FBlockLinkInfo
+{
+	GENERATED_BODY();
+	TArray<int32> RoadIndexes;
+	TArray<int32> IntersectionIndexes;
 };
 
 /**
@@ -367,16 +292,22 @@ protected:
 	//EidtorSubsystem启动顺序靠前，不能直接成员类
 	UPROPERTY()
 	URoadGraph* RoadGraph = nullptr;
-
+	
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<URoadMeshGenerator>> IDToRoadGenerator;
 
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<UIntersectionMeshGenerator>> IDToIntersectionGenerator;
 
+
+	UFUNCTION()
+	TArray<FBlockLinkInfo> GetSurfaceInRoadGraph();
 public:
 	UFUNCTION(BlueprintCallable)
 	void PrintGraphConnection();
+
+	UFUNCTION(BlueprintCallable)
+	void GenerateCityBlock();
 #pragma endregion RoadGraph
 };
 
