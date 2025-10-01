@@ -46,6 +46,7 @@ void URoadGraph::AddEdge(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex
 		}
 		Graph[FromNodeIndex].Emplace(FRoadEdge(ToNodeIndex, EdgeIndex));
 	}
+	EdgeCount++;
 }
 
 void URoadGraph::AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 EdgeIndex)
@@ -62,9 +63,16 @@ void URoadGraph::RemoveEdge(int32 FromNode, int32 ToNode)
 		if (AllConnectedNodes[i].ToNodeIndex == ToNode)
 		{
 			AllConnectedNodes.RemoveAtSwap(i);
+			EdgeCount--;
 			break;
 		}
 	}
+}
+
+void URoadGraph::RemoveUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex)
+{
+	RemoveEdge(NodeAIndex, NodeBIndex);
+	RemoveEdge(NodeBIndex, NodeAIndex);
 }
 
 void URoadGraph::RemoveAllEdges()
@@ -72,15 +80,15 @@ void URoadGraph::RemoveAllEdges()
 	Graph.Empty();
 }
 
-int32 URoadGraph::GetEdgesCount()
+/*int32 URoadGraph::GetEdgesCount()
 {
-	int32 EdgeCount=0;
+	int32 EdgeCount = 0;
 	for (const auto NeighboursOfVertex : Graph)
 	{
-		EdgeCount+=NeighboursOfVertex.Num();
+		EdgeCount += NeighboursOfVertex.Num();
 	}
 	return EdgeCount;
-}
+}*/
 
 bool URoadGraph::HasEdge(int32 FromNode, int32 ToNode) const
 {
@@ -100,7 +108,7 @@ int32 URoadGraph::GetRoadIndex(int32 FromNode, int32 ToNode)
 	int32 RoadIndex = INT32_ERROR;
 	if (HasEdge(FromNode, ToNode))
 	{
-		RoadIndex = Graph[FromNode][ToNode].EdgeIndex;
+		RoadIndex = Graph[FromNode][ToNode].RoadIndex;
 	}
 	return RoadIndex;
 }
@@ -123,7 +131,7 @@ void URoadGraph::PrintConnectionToLog()
 		for (int j = 0; j < Graph[i].Num(); ++j)
 		{
 			int32 ToNode = Graph[i][j].ToNodeIndex;
-			int32 ByEdge = Graph[i][j].EdgeIndex;
+			int32 ByEdge = Graph[i][j].RoadIndex;
 			FString SinglePath = FString::Printf(TEXT("[%d]-(%d)-[%d],"), i, ByEdge, ToNode);
 			UE_LOG(LogTemp, Display, TEXT("%s"), *SinglePath);
 		}
@@ -131,14 +139,91 @@ void URoadGraph::PrintConnectionToLog()
 	UE_LOG(LogTemp, Display, TEXT("Print Graph Connections Finished"));
 }
 
-void URoadGraph::SortNeighbours()
+TArray<FBlockLinkInfo> URoadGraph::GetSurfaceInGraph()
 {
-	for (auto& NeighbourOfVertex : Graph)
+	TArray<FBlockLinkInfo> Results;
+	if (Graph.IsEmpty())
 	{
-			
+		return Results;
 	}
+	//@TODO：需要排序邻接表
+
+	//二维表转一维表用于和bVisited形成对应；但因为RoadIndex可以删除数组可能不连贯
+	//不能直接使用RoadIndex作为数组ID，可能开头不为0、可能不连贯、双向无法区分
+	//设计一个编码算法节点A->B，当A<B时+0；当A>B时+最大跨度(MaxRoadIndex)，为了能拿到节点需要从节点开始遍历
+	TArray<FRoadEdge*> AllEdges;
+	TMap<int32, bool> bVisited;
+	bVisited.Reserve(EdgeCount);
+	//因为边数据中没有保存FromVertex，利用数组有序特性先记录这个值
+	int32 FromVertex = INT32_ERROR;
+	for (int32 i = 0; i < Graph.Num(); ++i)
+	{
+		for (auto& Edge : Graph[i])
+		{
+			if (FromVertex == INT32_ERROR)
+			{
+				FromVertex = i;
+			}
+			bVisited.Emplace(GetDirectionalEdgeIndex(i, Edge.ToNodeIndex, Edge.RoadIndex), false);
+			AllEdges.Emplace(&Edge);
+		}
+	}
+	//DFS搜索，备忘录剪枝
+	for (int i = 0; i < AllEdges.Num(); ++i)
+	{
+		int32 TargetEdgeIndex = GetDirectionalEdgeIndex(FromVertex, AllEdges[i]->ToNodeIndex, AllEdges[i]->RoadIndex);
+		if (bVisited[TargetEdgeIndex])
+		{
+			continue;
+		}
+		bVisited[TargetEdgeIndex] = true;
+		FBlockLinkInfo Surface;
+		Surface.RoadIndexes.Emplace(AllEdges[i]->RoadIndex);
+		const FRoadEdge* NextRoad = nullptr;
+		while (NextRoad != AllEdges[i])
+		{
+			if (nullptr != NextRoad)
+			{
+				Surface.RoadIndexes.Emplace(NextRoad->ToNodeIndex);
+				TargetEdgeIndex = GetDirectionalEdgeIndex(FromVertex, NextRoad->ToNodeIndex, NextRoad->RoadIndex);
+				bVisited[TargetEdgeIndex] = true;
+			}
+			int32 NextVertex = AllEdges[i]->ToNodeIndex;
+			Surface.IntersectionIndexes.Emplace(NextVertex);
+			NextRoad = FindNextEdge(NextVertex, *AllEdges[i]);
+			FromVertex = NextVertex;
+		}
+		if (Surface.RoadIndexes.Num() >=2)
+		{
+			Results.Emplace(Surface);
+		}
+	}
+	return Results;
 }
 
+
+URoadGraph::FRoadEdge* URoadGraph::FindNextEdge(int32 NodeIndex, const FRoadEdge& CurrentEdgeIndex)
+{
+	const int32 NeighboursCount = Graph[NodeIndex].Num();
+	int32 i = 0;
+	for (; i < NeighboursCount; ++i)
+	{
+		if (Graph[NodeIndex][i] == CurrentEdgeIndex)
+		{
+			break;
+		}
+	}
+	return &Graph[NodeIndex][(i + 1) % NeighboursCount];
+}
+
+int32 URoadGraph::GetDirectionalEdgeIndex(int32 FromNode, int32 ToNode, int32 RoadIndex)
+{
+	if (FromNode < ToNode)
+	{
+		return 2 * RoadIndex;
+	}
+	return 2 * RoadIndex + 1;
+}
 
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -281,7 +366,7 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 				                   FString::Printf(TEXT("II:%d"), GeneratorComp->GetGlobalIndex()));
 			}
 
-			IDToIntersectionGenerator.Emplace(GeneratorComp->GetGlobalIndex(),GeneratorComp);
+			IDToIntersectionGenerator.Emplace(GeneratorComp->GetGlobalIndex(), GeneratorComp);
 			for (const FIntersectionSegment& BuildData : IntersectionBuildData)
 			{
 				if (!IntersectionCompOnSpline.Contains(BuildData.OwnerSpline))
@@ -886,7 +971,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			if (nullptr != RoadGraph)
 			{
 				RoadGraph->AddUndirectedEdge(ConnectedIntersections[0], ConnectedIntersections[1],
-				                   GeneratorComp->GetGlobalIndex());
+				                             GeneratorComp->GetGlobalIndex());
 			}
 		}
 	}
@@ -1134,19 +1219,6 @@ void URoadGeneratorSubsystem::AddDebugTextRender(AActor* TargetActor, const FCol
 	IndexTexRender->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
 }
 
-TArray<FBlockLinkInfo> URoadGeneratorSubsystem::GetSurfaceInRoadGraph()
-{
-	TArray<FBlockLinkInfo> Results;
-	if (nullptr==RoadGraph)
-	{
-		return Results;
-	}
-	//需要排序邻接表
-	
-	TArray<bool> bVisited;
-	bVisited.Init(false,RoadGraph->GetEdgesCount());
-	return Results;
-}
 
 void URoadGeneratorSubsystem::PrintGraphConnection()
 {
@@ -1154,6 +1226,16 @@ void URoadGeneratorSubsystem::PrintGraphConnection()
 	{
 		RoadGraph->PrintConnectionToLog();
 	}
+}
+
+void URoadGeneratorSubsystem::GenerateCityBlock()
+{
+	if (nullptr == RoadGraph)
+	{
+		return;
+	}
+	TArray<FBlockLinkInfo> BlockLoop=RoadGraph->GetSurfaceInGraph();
+	
 }
 
 # pragma region DOF

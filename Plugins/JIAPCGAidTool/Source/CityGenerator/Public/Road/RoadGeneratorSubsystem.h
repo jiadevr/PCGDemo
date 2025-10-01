@@ -36,6 +36,14 @@ struct FConnectionInsertInfo
 	int32 IntersectionGlobalIndex = INT32_ERROR;
 };
 
+USTRUCT()
+struct FBlockLinkInfo
+{
+	GENERATED_BODY()
+	;
+	TArray<int32> RoadIndexes;
+	TArray<int32> IntersectionIndexes;
+};
 
 UCLASS()
 class URoadGraph final : public UObject
@@ -46,17 +54,24 @@ public:
 	struct FRoadEdge
 	{
 		int32 ToNodeIndex;
-		int32 EdgeIndex;
+		int32 RoadIndex;
 
-		FRoadEdge(int32 InToNodeIndex, int32 InEdgeIndex) :
-			ToNodeIndex(InToNodeIndex), EdgeIndex(InEdgeIndex)
+		FRoadEdge(int32 InToNodeIndex, int32 InRoadIndex) :
+			ToNodeIndex(InToNodeIndex), RoadIndex(InRoadIndex)
 		{
 		};
+
+		bool operator==(const FRoadEdge& Other) const
+		{
+			//边唯一绑定的是道路ID(多条路可以有相同的终点)
+			return /*this->ToNodeIndex == Other.ToNodeIndex &&*/ this->RoadIndex == Other.RoadIndex;
+		}
 	};
 
 	URoadGraph()
 	{
 	}
+
 	virtual ~URoadGraph() override;
 
 	void AddEdge(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex);
@@ -65,10 +80,12 @@ public:
 
 	void RemoveEdge(int32 FromNode, int32 ToNode);
 
+	void RemoveUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex);
+
 	void RemoveAllEdges();
 
-	int32 GetEdgesCount();
-	
+	//int32 GetEdgesCount();
+
 	bool HasEdge(int32 FromNode, int32 ToNode) const;
 
 	int32 GetRoadIndex(int32 FromNode, int32 ToNode);
@@ -78,21 +95,29 @@ public:
 	void PrintConnectionToLog();
 
 	void SortNeighbours();
-	
+
+	TArray<FBlockLinkInfo> GetSurfaceInGraph();
+
 protected:
 	/**
 	 * 稀疏图，使用邻接表实现
 	 */
 	TArray<TArray<FRoadEdge>> Graph;
+
+	FRoadEdge* FindNextEdge(int32 NodeIndex, const FRoadEdge& CurrentEdgeIndex);
+
+	int32 EdgeCount=0;
+
+	/**
+	 * 使用边的单Index模拟半边，当FromNode.VertexIndex<ToNode.VertexIndex时返回2*RoadIndex，否则返回2*RoadIndex+1；
+	 * @param FromNode 邻接表第一维参数（出发顶点）
+	 * @param ToNode 邻接表第二维中到达顶点参数
+	 * @param RoadIndex 邻接表第二维中的道路编号
+	 * @return 一维有向边序号
+	 */
+	int32 GetDirectionalEdgeIndex(int32 FromNode, int32 ToNode,int32 RoadIndex);
 };
 
-USTRUCT()
-struct FBlockLinkInfo
-{
-	GENERATED_BODY();
-	TArray<int32> RoadIndexes;
-	TArray<int32> IntersectionIndexes;
-};
 
 /**
  * 该类主要实现以下内容：
@@ -292,7 +317,7 @@ protected:
 	//EidtorSubsystem启动顺序靠前，不能直接成员类
 	UPROPERTY()
 	URoadGraph* RoadGraph = nullptr;
-	
+
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<URoadMeshGenerator>> IDToRoadGenerator;
 
@@ -300,8 +325,6 @@ protected:
 	TMap<int32, TWeakObjectPtr<UIntersectionMeshGenerator>> IDToIntersectionGenerator;
 
 
-	UFUNCTION()
-	TArray<FBlockLinkInfo> GetSurfaceInRoadGraph();
 public:
 	UFUNCTION(BlueprintCallable)
 	void PrintGraphConnection();
