@@ -89,6 +89,12 @@ public:
 		}
 	}
 
+	void AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 EdgeIndex)
+	{
+		AddEdge(NodeAIndex, NodeBIndex, EdgeIndex);
+		AddEdge(NodeBIndex, NodeAIndex, EdgeIndex);
+	}
+
 	void RemoveEdge(int32 FromNode, int32 ToNode)
 	{
 		TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
@@ -106,7 +112,7 @@ public:
 	{
 		Graph.Empty();
 	}
-	
+
 	bool HasEdge(int32 FromNode, int32 ToNode) const
 	{
 		const TArray<FEdge>& AllConnectedNodes = Graph[FromNode];
@@ -203,9 +209,6 @@ public:
 
 	virtual void Deinitialize() override;
 
-	//EidtorSubsystem启动顺序考前，不能直接成员类
-	UPROPERTY()
-	URoadGraph* RoadGraph = nullptr;
 
 #pragma region GenerateIntersection
 
@@ -329,9 +332,6 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoads();
 
-	TArray<TWeakObjectPtr<URoadMeshGenerator>> RoadMeshGenerators;
-
-
 	/**
 	 * 将传入的连续SegmentIndex（有序）按照BreakPoints(可以无序)切分成多少个连续子数组，子数组不含断点元素，两数组要求元素唯一
 	 * 单元测试函数位于FRoadGeneratorSubsystemTest的TestGetContinuousIndexSeries，函数本身应该是Protected，但是为了单元测试放在Public
@@ -361,10 +361,23 @@ protected:
 #pragma endregion GenerateRoad
 
 	void AddDebugTextRender(AActor* TargetActor, const FColor& TextColor, const FString& Text);
+#pragma region RoadGraph
+
+protected:
+	//EidtorSubsystem启动顺序靠前，不能直接成员类
+	UPROPERTY()
+	URoadGraph* RoadGraph = nullptr;
+
+	UPROPERTY()
+	TMap<int32, TWeakObjectPtr<URoadMeshGenerator>> IDToRoadGenerator;
+
+	UPROPERTY()
+	TMap<int32, TWeakObjectPtr<UIntersectionMeshGenerator>> IDToIntersectionGenerator;
 
 public:
 	UFUNCTION(BlueprintCallable)
 	void PrintGraphConnection();
+#pragma endregion RoadGraph
 };
 
 template <typename T>

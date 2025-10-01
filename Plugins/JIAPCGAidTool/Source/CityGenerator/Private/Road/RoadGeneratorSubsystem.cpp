@@ -68,13 +68,14 @@ void URoadGeneratorSubsystem::OnRoadActorRemoved(AActor* RemovedActor)
 		RemovedActor->GetComponentByClass(URoadMeshGenerator::StaticClass()));
 	if (nullptr != RoadDataComp)
 	{
-		RoadMeshGenerators.Remove(TWeakObjectPtr<URoadMeshGenerator>(RoadDataComp));
+		IDToRoadGenerator.Remove(RoadDataComp->GetGlobalIndex());
 		return;
 	}
 	UIntersectionMeshGenerator* IntersectionDataComp = Cast<UIntersectionMeshGenerator>(
 		RemovedActor->GetComponentByClass(UIntersectionMeshGenerator::StaticClass()));
 	if (nullptr != IntersectionDataComp)
 	{
+		IDToIntersectionGenerator.Remove(IntersectionDataComp->GetGlobalIndex());
 		TArray<FIntersectionSegment> Segments = IntersectionDataComp->GetIntersectionSegmentsData();
 		TArray<TWeakObjectPtr<USplineComponent>> InfluencedSplines;
 		for (auto& Segment : Segments)
@@ -97,7 +98,8 @@ void URoadGeneratorSubsystem::Deinitialize()
 {
 	SplineSegmentsInfo.Empty();
 	SplineQuadTree.Empty();
-	RoadIntersectionsComps.Empty();
+	IDToRoadGenerator.Empty();
+	IDToIntersectionGenerator.Empty();
 	GEditor->OnComponentTransformChanged().Remove(ComponentMoveHandle);
 	GEditor->OnLevelActorDeleted().Remove(RoadActorRemovedHandle);
 	GEditor->OnWorldDestroyed().Remove(WorldChangeDelegate);
@@ -125,8 +127,8 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 		UNotifyUtilities::ShowPopupMsgAtCorner("Error:Find Null Intersections");
 		return;
 	}
-	RoadIntersectionsComps.Reserve(IntersectionResults.Num());
-	RoadIntersectionsComps.Reset();
+	IDToIntersectionGenerator.Reserve(IntersectionResults.Num());
+	IDToIntersectionGenerator.Reset();
 	IntersectionCompOnSpline.Reset();
 
 	TArray<FIntersectionSegment> IntersectionBuildData;
@@ -161,7 +163,7 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 				                   FString::Printf(TEXT("II:%d"), GeneratorComp->GetGlobalIndex()));
 			}
 
-			RoadIntersectionsComps.Emplace(GeneratorComp);
+			IDToIntersectionGenerator.Emplace(GeneratorComp->GetGlobalIndex(),GeneratorComp);
 			for (const FIntersectionSegment& BuildData : IntersectionBuildData)
 			{
 				if (!IntersectionCompOnSpline.Contains(BuildData.OwnerSpline))
@@ -176,9 +178,13 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 
 	FlushPersistentDebugLines(GetWorld());
 	//调用生成
-	for (const auto& IntersectionGenerator : RoadIntersectionsComps)
+	for (const auto& IDGeneratorPair : IDToIntersectionGenerator)
 	{
-		IntersectionGenerator->GenerateMesh();
+		if (!IDGeneratorPair.Value.IsValid())
+		{
+			continue;
+		}
+		IDGeneratorPair.Value->GenerateMesh();
 	}
 	bIntersectionsGenerated = true;
 }
@@ -750,7 +756,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			GeneratorComp->SetMeshComponent(MeshComp);
 			GeneratorComp->SetReferenceSpline(SingleSpline);
 			GeneratorComp->SetRoadInfo(RoadWithConnectInfo);
-			RoadMeshGenerators.Emplace(GeneratorComp);
+			IDToRoadGenerator.Emplace(GeneratorComp->GetGlobalIndex(), GeneratorComp);
 			RoadCounter++;
 
 			if (true == AddTextRender.GetValueOnGameThread())
@@ -761,19 +767,19 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			//把对道路和附属节点加入树
 			if (nullptr != RoadGraph)
 			{
-				RoadGraph->AddEdge(ConnectedIntersections[0], ConnectedIntersections[1],
+				RoadGraph->AddUndirectedEdge(ConnectedIntersections[0], ConnectedIntersections[1],
 				                   GeneratorComp->GetGlobalIndex());
 			}
 		}
 	}
 	//4.调用生成
-	for (const auto& RoadMeshGenerator : RoadMeshGenerators)
+	for (const auto& IDGeneratorPair : IDToRoadGenerator)
 	{
-		if (!RoadMeshGenerator.IsValid())
+		if (!IDGeneratorPair.Value.IsValid())
 		{
 			continue;
 		}
-		RoadMeshGenerator->GenerateMesh();
+		IDGeneratorPair.Value->GenerateMesh();
 	}
 }
 
