@@ -55,6 +55,28 @@ void URoadGraph::AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 Edg
 	AddEdge(NodeBIndex, NodeAIndex, EdgeIndex);
 }
 
+void URoadGraph::AddEdgeInGivenSlot(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex, int32 SlotIndexOfFromNode)
+{
+	if (FromNodeIndex == INT32_ERROR || ToNodeIndex == INT32_ERROR || SlotIndexOfFromNode < 0)
+	{
+		return;
+	}
+
+	if (!Graph.IsValidIndex(FromNodeIndex))
+	{
+		if (FromNodeIndex > Graph.Num() - 1)
+		{
+			Graph.SetNum(FromNodeIndex + 1);
+		}
+	}
+	if (!Graph[FromNodeIndex].IsValidIndex(SlotIndexOfFromNode))
+	{
+		Graph[FromNodeIndex].SetNum(SlotIndexOfFromNode + 1);
+	}
+	Graph[FromNodeIndex][SlotIndexOfFromNode] = FRoadEdge(ToNodeIndex, EdgeIndex);
+	EdgeCount++;
+}
+
 void URoadGraph::RemoveEdge(int32 FromNode, int32 ToNode)
 {
 	TArray<FRoadEdge>& AllConnectedNodes = Graph[FromNode];
@@ -179,7 +201,7 @@ TArray<FBlockLinkInfo> URoadGraph::GetSurfaceInGraph()
 		bVisited[TargetEdgeIndex] = true;
 		FBlockLinkInfo Surface;
 		Surface.RoadIndexes.Emplace(AllEdges[i]->RoadIndex);
-		const FRoadEdge* CurrentRoad=AllEdges[i];
+		const FRoadEdge* CurrentRoad = AllEdges[i];
 		const FRoadEdge* NextRoad = nullptr;
 		while (NextRoad != AllEdges[i])
 		{
@@ -192,10 +214,10 @@ TArray<FBlockLinkInfo> URoadGraph::GetSurfaceInGraph()
 			int32 NextVertex = CurrentRoad->ToNodeIndex;
 			Surface.IntersectionIndexes.Emplace(NextVertex);
 			NextRoad = FindNextEdge(NextVertex, *CurrentRoad);
-			CurrentRoad=NextRoad;
+			CurrentRoad = NextRoad;
 			FromVertex = NextVertex;
 		}
-		if (Surface.RoadIndexes.Num() >=2)
+		if (Surface.RoadIndexes.Num() >= 2)
 		{
 			Results.Emplace(Surface);
 		}
@@ -923,6 +945,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
 			TArray<int32> ConnectedIntersections;
 			ConnectedIntersections.Init(INT32_ERROR, 2);
+			//连接到Intersection的路口序号
+			TArray<int32> EntryIndexOfIntersections;
 			if (SegmentGroupToConnectionToHead.Contains(i))
 			{
 				TArray<FConnectionInsertInfo> Connections;
@@ -1236,36 +1260,44 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 	{
 		return;
 	}
-	TArray<FBlockLinkInfo> BlockLoop=RoadGraph->GetSurfaceInGraph();
-	
+	TArray<FBlockLinkInfo> BlockLoop = RoadGraph->GetSurfaceInGraph();
+	//移除外轮廓
+	RemoveInvalidLoopInline(BlockLoop);
+	if (BlockLoop.Num() <= 0)
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner("Find Null Valid Loop");
+		return;
+	}
+	//获取生成轮廓信息
+	//生成Actor并挂载
 }
 
 void URoadGeneratorSubsystem::RemoveInvalidLoopInline(TArray<FBlockLinkInfo>& OutBlockLoops)
 {
-	double MaxArea=-1.0;
-	int32 MaxAreaIndex=-1;
-	for (int32 i=0;i< OutBlockLoops.Num();++i)
+	double MaxArea = -1.0;
+	int32 MaxAreaIndex = -1;
+	for (int32 i = 0; i < OutBlockLoops.Num(); ++i)
 	{
 		const TArray<int32>& VertexIndex = OutBlockLoops[i].IntersectionIndexes;
 		TArray<FVector2D> VertexLoc2D;
 		VertexLoc2D.Reserve(VertexIndex.Num());
-		for (const auto& Index :  VertexIndex)
+		for (const auto& Index : VertexIndex)
 		{
 			ensureAlways(IDToIntersectionGenerator.Contains(Index));
-			TWeakObjectPtr<UIntersectionMeshGenerator> MeshGenerator=IDToIntersectionGenerator[Index];
+			TWeakObjectPtr<UIntersectionMeshGenerator> MeshGenerator = IDToIntersectionGenerator[Index];
 			if (!MeshGenerator.IsValid())
 			{
-				UE_LOG(LogTemp,Error,TEXT("Intersection Index:%d Is Not Valid"),Index);
+				UE_LOG(LogTemp, Error, TEXT("Intersection Index:%d Is Not Valid"), Index);
 				continue;
 			}
-			UIntersectionMeshGenerator* IntersectionComp=MeshGenerator.Pin().Get();
+			UIntersectionMeshGenerator* IntersectionComp = MeshGenerator.Pin().Get();
 			VertexLoc2D.Emplace(FVector2D(IntersectionComp->GetOwner()->GetActorLocation()));
 		}
-		double LoopArea=URoadGeometryUtilities::GetAreaOfSortedPoints(VertexLoc2D);
-		if (LoopArea>MaxArea)
+		double LoopArea = URoadGeometryUtilities::GetAreaOfSortedPoints(VertexLoc2D);
+		if (LoopArea > MaxArea)
 		{
 			MaxArea = LoopArea;
-			MaxAreaIndex=i;
+			MaxAreaIndex = i;
 		}
 	}
 	if (OutBlockLoops.IsValidIndex(MaxAreaIndex))

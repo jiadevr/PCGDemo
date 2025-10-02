@@ -78,6 +78,15 @@ public:
 
 	void AddUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex, int32 EdgeIndex);
 
+	/**
+	 * 为了利用之前的保序数据提供的特殊接口,直接添加对应边到给定邻接表位置
+	 * @param FromNodeIndex 起始节点序号
+	 * @param ToNodeIndex 终止节点序号
+	 * @param EdgeIndex 边序号
+	 * @param SlotIndexOfFromNode 要插入的邻接表位置、对应排序后的元素编号 
+	 */
+	void AddEdgeInGivenSlot(int32 FromNodeIndex, int32 ToNodeIndex, int32 EdgeIndex, int32 SlotIndexOfFromNode);
+
 	void RemoveEdge(int32 FromNode, int32 ToNode);
 
 	void RemoveUndirectedEdge(int32 NodeAIndex, int32 NodeBIndex);
