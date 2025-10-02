@@ -183,6 +183,8 @@ public:
 	float RoadWidth = 0;
 
 	uint32 OwnerGlobalIndex=UINT32_ERROR;
+
+	int32 EntryLocalIndex = INT32_ERROR;
 };
 
 //道路名称枚举

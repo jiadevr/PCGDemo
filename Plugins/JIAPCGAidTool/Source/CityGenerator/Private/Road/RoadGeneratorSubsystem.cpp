@@ -875,6 +875,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				ContinuousSegmentsGroups, AllSegmentOnSpline,
 				PotentialConnection[0].GetGlobalIndex(), IntersectionSegment.IntersectionEndPointWS);
 			InsertInfo.IntersectionGlobalIndex = IntersectionSegment.OwnerGlobalIndex;
+			//传递逆时针排序给建图用
+			InsertInfo.EntryLocalIndex = IntersectionSegment.EntryLocalIndex;
 			float DisOfConnectionOnSpline = TargetSplinePtr->GetDistanceAlongSplineAtLocation(
 				IntersectionSegment.IntersectionEndPointWS, ESplineCoordinateSpace::World);
 			FTransform ConnectionTransform = TargetSplinePtr->GetTransformAtDistanceAlongSpline(
@@ -945,8 +947,9 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			FRoadSegmentsGroup RoadWithConnectInfo(RoadSegmentTransforms);
 			TArray<int32> ConnectedIntersections;
 			ConnectedIntersections.Init(INT32_ERROR, 2);
-			//连接到Intersection的路口序号
+			//连接到Intersection的路口序号，用于图邻接表构建
 			TArray<int32> EntryIndexOfIntersections;
+			EntryIndexOfIntersections.Init(-1,2);
 			if (SegmentGroupToConnectionToHead.Contains(i))
 			{
 				TArray<FConnectionInsertInfo> Connections;
@@ -960,12 +963,14 @@ void URoadGeneratorSubsystem::GenerateRoads()
 							RoadWithConnectInfo.bHasHeadConnection = true;
 							RoadWithConnectInfo.HeadConnectionTrans = Connection.ConnectionTrans;
 							ConnectedIntersections[0] = Connection.IntersectionGlobalIndex;
+							EntryIndexOfIntersections[0]=Connection.EntryLocalIndex;
 						}
 						else
 						{
 							RoadWithConnectInfo.bHasTailConnection = true;
 							RoadWithConnectInfo.TailConnectionTrans = Connection.ConnectionTrans;
 							ConnectedIntersections[1] = Connection.IntersectionGlobalIndex;
+							EntryIndexOfIntersections[1]=Connection.EntryLocalIndex;
 						}
 					}
 				}
@@ -993,11 +998,15 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				AddDebugTextRender(RoadActor, FColor::Yellow,
 				                   FString::Printf(TEXT("RI:%d"), GeneratorComp->GetGlobalIndex()));
 			}
-			//把对道路和附属节点加入树
+			//把对道路和附属节点加入图
 			if (nullptr != RoadGraph)
 			{
-				RoadGraph->AddUndirectedEdge(ConnectedIntersections[0], ConnectedIntersections[1],
-				                             GeneratorComp->GetGlobalIndex());
+				/*RoadGraph->AddUndirectedEdge(ConnectedIntersections[0], ConnectedIntersections[1],
+				                             GeneratorComp->GetGlobalIndex());*/
+				RoadGraph->AddEdgeInGivenSlot(ConnectedIntersections[0], ConnectedIntersections[1],
+											 GeneratorComp->GetGlobalIndex(),EntryIndexOfIntersections[0]);
+				RoadGraph->AddEdgeInGivenSlot(ConnectedIntersections[0], ConnectedIntersections[1],
+											 GeneratorComp->GetGlobalIndex(),EntryIndexOfIntersections[1]);
 			}
 		}
 	}
