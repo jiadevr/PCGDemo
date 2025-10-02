@@ -34,6 +34,8 @@ struct FConnectionInsertInfo
 	FTransform ConnectionTrans;
 
 	int32 IntersectionGlobalIndex = INT32_ERROR;
+
+	int32 EntryLocalIndex = INT32_ERROR;
 };
 
 USTRUCT()
@@ -55,6 +57,12 @@ public:
 	{
 		int32 ToNodeIndex;
 		int32 RoadIndex;
+
+		FRoadEdge()
+		{
+			ToNodeIndex=INT32_ERROR;
+			RoadIndex=INT32_ERROR;
+		}
 
 		FRoadEdge(int32 InToNodeIndex, int32 InRoadIndex) :
 			ToNodeIndex(InToNodeIndex), RoadIndex(InRoadIndex)
@@ -103,8 +111,6 @@ public:
 
 	void PrintConnectionToLog();
 
-	void SortNeighbours();
-
 	/**
 	 * 模拟半边计算图中的插入面，会包括外轮廓边（可以配合点坐标使用Shoelace公式去除）
 	 * @return 外轮廓数组，以边开始，首个顶点位于IntersectionIndexes.Last(0)
@@ -119,7 +125,7 @@ protected:
 
 	FRoadEdge* FindNextEdge(int32 NodeIndex, const FRoadEdge& CurrentEdgeIndex);
 
-	int32 EdgeCount=0;
+	int32 EdgeCount = 0;
 
 	/**
 	 * 使用边的单Index模拟半边，当FromNode.VertexIndex<ToNode.VertexIndex时返回2*RoadIndex，否则返回2*RoadIndex+1；
@@ -128,7 +134,7 @@ protected:
 	 * @param RoadIndex 邻接表第二维中的道路编号
 	 * @return 一维有向边序号
 	 */
-	int32 GetDirectionalEdgeIndex(int32 FromNode, int32 ToNode,int32 RoadIndex);
+	int32 GetDirectionalEdgeIndex(int32 FromNode, int32 ToNode, int32 RoadIndex);
 };
 
 
@@ -336,7 +342,6 @@ protected:
 
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<UIntersectionMeshGenerator>> IDToIntersectionGenerator;
-
 
 public:
 	UFUNCTION(BlueprintCallable)

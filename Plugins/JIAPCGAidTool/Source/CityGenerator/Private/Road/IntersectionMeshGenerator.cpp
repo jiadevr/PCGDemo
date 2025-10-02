@@ -177,6 +177,8 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		RoadInterfaceSegment.IntersectionEndPointWS = FVector(ConnectionLoc, 0.0);
 		RoadInterfaceSegment.IntersectionEndRotWS = (IntersectionsData[i].IntersectionEndRotWS);
 		RoadInterfaceSegment.OwnerGlobalIndex=GetGlobalIndex();
+		//这个值是为了给建图复用排序
+		RoadInterfaceSegment.EntryLocalIndex=i;
 		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
 		if (bShowDebug)
 		{
