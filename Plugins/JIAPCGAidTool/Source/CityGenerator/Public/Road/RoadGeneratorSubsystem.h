@@ -335,6 +335,12 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void GenerateCityBlock();
+
+	/**
+	 * 删除外轮廓，需要ComponentOwner位置信息
+	 * @param OutBlockLoops 原地修改环、面信息
+	 */
+	void RemoveInvalidLoopInline(TArray<FBlockLinkInfo>& OutBlockLoops);
 #pragma endregion RoadGraph
 };
 

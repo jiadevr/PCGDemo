@@ -1240,6 +1240,41 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 	
 }
 
+void URoadGeneratorSubsystem::RemoveInvalidLoopInline(TArray<FBlockLinkInfo>& OutBlockLoops)
+{
+	double MaxArea=-1.0;
+	int32 MaxAreaIndex=-1;
+	for (int32 i=0;i< OutBlockLoops.Num();++i)
+	{
+		const TArray<int32>& VertexIndex = OutBlockLoops[i].IntersectionIndexes;
+		TArray<FVector2D> VertexLoc2D;
+		VertexLoc2D.Reserve(VertexIndex.Num());
+		for (const auto& Index :  VertexIndex)
+		{
+			ensureAlways(IDToIntersectionGenerator.Contains(Index));
+			TWeakObjectPtr<UIntersectionMeshGenerator> MeshGenerator=IDToIntersectionGenerator[Index];
+			if (!MeshGenerator.IsValid())
+			{
+				UE_LOG(LogTemp,Error,TEXT("Intersection Index:%d Is Not Valid"),Index);
+				continue;
+			}
+			UIntersectionMeshGenerator* IntersectionComp=MeshGenerator.Pin().Get();
+			VertexLoc2D.Emplace(FVector2D(IntersectionComp->GetOwner()->GetActorLocation()));
+		}
+		double LoopArea=URoadGeometryUtilities::GetAreaOfSortedPoints(VertexLoc2D);
+		if (LoopArea>MaxArea)
+		{
+			MaxArea = LoopArea;
+			MaxAreaIndex=i;
+		}
+	}
+	if (OutBlockLoops.IsValidIndex(MaxAreaIndex))
+	{
+		OutBlockLoops.RemoveAtSwap(MaxAreaIndex);
+	}
+	return;
+}
+
 # pragma region DOF
 /*
 bool URoadGeneratorSubsystem::ResampleSamplePoint(const USplineComponent* TargetSpline,
