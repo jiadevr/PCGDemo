@@ -174,3 +174,16 @@ void URoadGeometryUtilities::SortPointCounterClockwise(const FVector2D& Center, 
 		}
 	});
 }
+
+double URoadGeometryUtilities::GetAreaOfSortedPoints(const TArray<FVector2D>& SortedVertex)
+{
+	double Area = 0.f;
+	int32 VertexNum = SortedVertex.Num();
+	for (int i = 0; i < VertexNum; ++i)
+	{
+		FVector2D VertexA = SortedVertex[i];
+		FVector2D VertexB = SortedVertex[(i + 1) % VertexNum];
+		Area += VertexA.X * VertexB.Y - VertexA.Y * VertexB.X;
+	}
+	return FMath::Abs(Area);
+}

@@ -40,4 +40,11 @@ public:
 						   TArray<FVector2D>& IntersectionsIn2DSpace);
 
 	static void SortPointCounterClockwise(const FVector2D& Center,TArray<FVector2D>& ArrayToSort);
+
+	/**
+	 * 使用Shoelace法计算有序（顺时针、逆时针）顶点围成的多边形面积
+	 * @param SortedVertex 有序顶点数组
+	 * @return 面积绝对值
+	 */
+	static double GetAreaOfSortedPoints(const TArray<FVector2D>& SortedVertex);
 };

@@ -179,18 +179,20 @@ TArray<FBlockLinkInfo> URoadGraph::GetSurfaceInGraph()
 		bVisited[TargetEdgeIndex] = true;
 		FBlockLinkInfo Surface;
 		Surface.RoadIndexes.Emplace(AllEdges[i]->RoadIndex);
+		const FRoadEdge* CurrentRoad=AllEdges[i];
 		const FRoadEdge* NextRoad = nullptr;
 		while (NextRoad != AllEdges[i])
 		{
 			if (nullptr != NextRoad)
 			{
-				Surface.RoadIndexes.Emplace(NextRoad->ToNodeIndex);
+				Surface.RoadIndexes.Emplace(NextRoad->RoadIndex);
 				TargetEdgeIndex = GetDirectionalEdgeIndex(FromVertex, NextRoad->ToNodeIndex, NextRoad->RoadIndex);
 				bVisited[TargetEdgeIndex] = true;
 			}
-			int32 NextVertex = AllEdges[i]->ToNodeIndex;
+			int32 NextVertex = CurrentRoad->ToNodeIndex;
 			Surface.IntersectionIndexes.Emplace(NextVertex);
-			NextRoad = FindNextEdge(NextVertex, *AllEdges[i]);
+			NextRoad = FindNextEdge(NextVertex, *CurrentRoad);
+			CurrentRoad=NextRoad;
 			FromVertex = NextVertex;
 		}
 		if (Surface.RoadIndexes.Num() >=2)

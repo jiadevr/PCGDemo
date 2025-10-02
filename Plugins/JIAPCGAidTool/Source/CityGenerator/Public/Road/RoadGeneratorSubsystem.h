@@ -96,6 +96,10 @@ public:
 
 	void SortNeighbours();
 
+	/**
+	 * 模拟半边计算图中的插入面，会包括外轮廓边（可以配合点坐标使用Shoelace公式去除）
+	 * @return 外轮廓数组，以边开始，首个顶点位于IntersectionIndexes.Last(0)
+	 */
 	TArray<FBlockLinkInfo> GetSurfaceInGraph();
 
 protected:
