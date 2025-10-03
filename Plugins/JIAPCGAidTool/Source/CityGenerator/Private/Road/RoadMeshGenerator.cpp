@@ -138,6 +138,18 @@ void URoadMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshCom
 	}
 }
 
+TArray<FVector> URoadMeshGenerator::GetRoadPathPoints(bool bForwardOrder)
+{
+	TArray<FVector> Results;
+	Results.SetNum(SweepPointsTrans.Num());
+	for (int32 i = 0; i < SweepPointsTrans.Num(); ++i)
+	{
+		int32 TargetIndex = bForwardOrder ? i : SweepPointsTrans.Num() - 1 - i;
+		Results[TargetIndex] =UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(), SweepPointsTrans[i].GetLocation());
+	}
+	return Results;
+}
+
 void URoadMeshGenerator::ConvertPointToLocalSpace(const FTransform& InActorTransform)
 {
 	TArray<FTransform> Results;

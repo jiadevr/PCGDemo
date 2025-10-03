@@ -45,6 +45,9 @@ public:
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
 
+
+	TArray<FVector> GetRoadPathPoints(bool bForwardOrder=true);
+
 protected:
 	bool bIsLocalSpace = false;
 	/**

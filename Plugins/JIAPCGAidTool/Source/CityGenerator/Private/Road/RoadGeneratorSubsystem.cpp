@@ -1054,6 +1054,28 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		return;
 	}
 	//获取生成轮廓信息
+	for (int32 i = 0; i < BlockLoop.Num(); ++i)
+	{
+		const TArray<int32>& RoadIndexes=BlockLoop[i].RoadIndexes;
+		const TArray<int32>& IntersectionIndexes=BlockLoop[i].IntersectionIndexes;
+		FColor DebugColor= FColor::MakeRandomColor();
+		FString PrintStr="";
+		PrintStr += FString::Printf(TEXT("[%d]"),IntersectionIndexes.Last());
+		for (int j = 0; j < RoadIndexes.Num(); ++j)
+		{
+			/*TWeakObjectPtr<URoadMeshGenerator> RoadGeneratorWeak=IDToRoadGenerator[RoadIndexes[i]];
+			if(!RoadGeneratorWeak.IsValid())
+			{
+				continue;
+			}
+			URoadMeshGenerator* RoadGenerator=RoadGeneratorWeak.Pin().Get();
+			//这里知道是那条路，但不知道顺序
+			RoadGenerator->GetRoadPathPoints()*/
+			PrintStr+= FString::Printf(TEXT("-(%d)-"), RoadIndexes[i]);
+			PrintStr+= FString::Printf(TEXT("[%d]"), IntersectionIndexes[i]);
+		}
+		UE_LOG(LogTemp,Display,TEXT("Block Loop:%d {%s}"),i,*PrintStr);
+	}
 	//生成Actor并挂载
 }
 
