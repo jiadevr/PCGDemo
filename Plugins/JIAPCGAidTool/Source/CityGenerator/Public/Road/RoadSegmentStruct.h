@@ -182,7 +182,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	float RoadWidth = 0;
 
-	uint32 OwnerGlobalIndex=UINT32_ERROR;
+	uint32 OwnerGlobalIndex = UINT32_ERROR;
 
 	int32 EntryLocalIndex = INT32_ERROR;
 };

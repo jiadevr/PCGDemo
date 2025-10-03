@@ -33,7 +33,8 @@ void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FInter
 	IntersectionsData = InIntersectionData;
 }
 
-TArray<FIntersectionSegment> UIntersectionMeshGenerator::GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline)
+TArray<FIntersectionSegment> UIntersectionMeshGenerator::GetRoadConnectionPoint(
+	const TWeakObjectPtr<USplineComponent> InOwnerSpline)
 {
 	TArray<FIntersectionSegment> Results;
 	if (ConnectionLocations.Contains(InOwnerSpline))
@@ -176,9 +177,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		FIntersectionSegment RoadInterfaceSegment = IntersectionsData[i];
 		RoadInterfaceSegment.IntersectionEndPointWS = FVector(ConnectionLoc, 0.0);
 		RoadInterfaceSegment.IntersectionEndRotWS = (IntersectionsData[i].IntersectionEndRotWS);
-		RoadInterfaceSegment.OwnerGlobalIndex=GetGlobalIndex();
+		RoadInterfaceSegment.OwnerGlobalIndex = GetGlobalIndex();
 		//这个值是为了给建图复用排序
-		RoadInterfaceSegment.EntryLocalIndex=i;
+		RoadInterfaceSegment.EntryLocalIndex = i;
 		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
 		if (bShowDebug)
 		{

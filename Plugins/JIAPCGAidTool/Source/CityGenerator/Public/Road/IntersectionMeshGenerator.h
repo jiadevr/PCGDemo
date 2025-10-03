@@ -24,7 +24,7 @@ public:
 	 */
 	void SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData);
 
-	[[nodiscard]]TArray<FIntersectionSegment> GetIntersectionSegmentsData(){return IntersectionsData;}
+	[[nodiscard]] TArray<FIntersectionSegment> GetIntersectionSegmentsData() { return IntersectionsData; }
 
 	/**
 	 * 返回交点对象的2D位置盒，被RoadGeneratorSubsystem::GetInteractionOccupiedSegments计算道路切割
@@ -36,7 +36,7 @@ public:
 	}
 
 	TArray<FIntersectionSegment> GetRoadConnectionPoint(const TWeakObjectPtr<USplineComponent> InOwnerSpline);
-	
+
 	/**
 	 * IMeshGeneratorInterface接口，根据类内的IntersectionsData数据调用同一Owner下挂载的UDynamicMeshComponent创建路口Mesh
 	 * @return 返回创建Mesh是否成功 
@@ -56,7 +56,7 @@ protected:
 	 * 核心函数，创建交点二维截面
 	 * @return 逆时针顺序二维截面坐标数组
 	 */
-	[[nodiscard]]TArray<FVector2D> CreateExtrudeShape();
+	[[nodiscard]] TArray<FVector2D> CreateExtrudeShape();
 
 	/**
 	 * 计算模拟Spline的Tangent值，对于每个端点都需要计算一次
@@ -72,8 +72,8 @@ protected:
 	 */
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	TArray<FIntersectionSegment> IntersectionsData;
-	
-	TMultiMap<TWeakObjectPtr<USplineComponent>,FIntersectionSegment>ConnectionLocations;
+
+	TMultiMap<TWeakObjectPtr<USplineComponent>, FIntersectionSegment> ConnectionLocations;
 
 	static int32 IntersectionGlobalIndex;
 };
