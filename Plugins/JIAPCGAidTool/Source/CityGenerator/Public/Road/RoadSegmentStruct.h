@@ -217,7 +217,6 @@ public:
 		CrossSectionCoord = FLaneMeshInfo::GetRectangle2DCoords(CrossSectionWidth, CrossSectionHeight);
 		SampleLength = Length;
 	}
-
 	TArray<FVector2D> CrossSectionCoord;
 	float SampleLength = 500.0;
 
@@ -275,4 +274,7 @@ struct FRoadSegmentsGroup
 	*/
 	bool bHasTailConnection = false;
 	FTransform TailConnectionTrans;
+
+	int32 FromIntersectionIndex;
+	int32 ToIntersectionIndex;
 };

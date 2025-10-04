@@ -738,6 +738,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 							RoadWithConnectInfo.bHasHeadConnection = true;
 							RoadWithConnectInfo.HeadConnectionTrans = Connection.ConnectionTrans;
 							ConnectedIntersections[0] = Connection.IntersectionGlobalIndex;
+							//给连接信息加负载，用于判断走向
+							RoadWithConnectInfo.FromIntersectionIndex = Connection.IntersectionGlobalIndex;
 							EntryIndexOfIntersections[0] = Connection.EntryLocalIndex;
 						}
 						else
@@ -745,6 +747,8 @@ void URoadGeneratorSubsystem::GenerateRoads()
 							RoadWithConnectInfo.bHasTailConnection = true;
 							RoadWithConnectInfo.TailConnectionTrans = Connection.ConnectionTrans;
 							ConnectedIntersections[1] = Connection.IntersectionGlobalIndex;
+							//给连接信息加负载，用于判断走向
+							RoadWithConnectInfo.ToIntersectionIndex = Connection.IntersectionGlobalIndex;
 							EntryIndexOfIntersections[1] = Connection.EntryLocalIndex;
 						}
 					}
@@ -1056,25 +1060,45 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 	//获取生成轮廓信息
 	for (int32 i = 0; i < BlockLoop.Num(); ++i)
 	{
-		const TArray<int32>& RoadIndexes=BlockLoop[i].RoadIndexes;
-		const TArray<int32>& IntersectionIndexes=BlockLoop[i].IntersectionIndexes;
-		FColor DebugColor= FColor::MakeRandomColor();
-		FString PrintStr="";
-		PrintStr += FString::Printf(TEXT("[%d]"),IntersectionIndexes.Last());
+		const TArray<int32>& RoadIndexes = BlockLoop[i].RoadIndexes;
+		const TArray<int32>& IntersectionIndexes = BlockLoop[i].IntersectionIndexes;
+		FColor DebugColor = FColor::MakeRandomColor();
+		FString PrintStr = "";
+		PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes.Last());
+		TArray<FVector> LoopPath = ;
 		for (int j = 0; j < RoadIndexes.Num(); ++j)
 		{
-			/*TWeakObjectPtr<URoadMeshGenerator> RoadGeneratorWeak=IDToRoadGenerator[RoadIndexes[i]];
-			if(!RoadGeneratorWeak.IsValid())
+			PrintStr += FString::Printf(TEXT("-(%d)-"), RoadIndexes[i]);
+			TWeakObjectPtr<URoadMeshGenerator> RoadGeneratorWeak = IDToRoadGenerator[RoadIndexes[i]];
+			if (!RoadGeneratorWeak.IsValid())
 			{
 				continue;
 			}
-			URoadMeshGenerator* RoadGenerator=RoadGeneratorWeak.Pin().Get();
+			URoadMeshGenerator* RoadGenerator = RoadGeneratorWeak.Pin().Get();
 			//这里知道是那条路，但不知道顺序
-			RoadGenerator->GetRoadPathPoints()*/
-			PrintStr+= FString::Printf(TEXT("-(%d)-"), RoadIndexes[j]);
-			PrintStr+= FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
+
+			//道路的起点终点
+			int32 RoadPathFromConnection = INT32_ERROR;
+			int32 RoadPathToConnection = INT32_ERROR;
+			RoadGenerator->GetConnectionOrderOfIntersection(RoadPathFromConnection, RoadPathToConnection);
+			//图顺序是当前边和它的终点
+			int32 GraphStartEdge = IntersectionIndexes.Last();
+			if (j != 0)
+			{
+				GraphStartEdge = IntersectionIndexes[j - 1];
+			}
+			int32 GraphEndEdge = IntersectionIndexes[j];
+			ensureAlways(
+				(RoadPathFromConnection==GraphStartEdge||RoadPathFromConnection==GraphEndEdge)&&(RoadPathToConnection==
+					GraphStartEdge||RoadPathToConnection==GraphEndEdge));
+			//根据道路朝向提取Location
+			TArray<FVector> RoadCenterLocArray = RoadGenerator->GetRoadEdgePoints(
+				RoadPathFromConnection == GraphStartEdge);
+
+			//十字路口的衔接点
+			PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
 		}
-		UE_LOG(LogTemp,Display,TEXT("Block Loop:%d {%s}"),i,*PrintStr);
+		UE_LOG(LogTemp, Display, TEXT("Block Loop:%d {%s}"), i, *PrintStr);
 	}
 	//生成Actor并挂载
 }

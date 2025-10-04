@@ -23,7 +23,7 @@ public:
 
 	UFUNCTION(CallInEditor, BlueprintCallable)
 	void DrawDebugElemOnSweepPoint();
-	
+
 	/**
 	 * 设置参考/归属样条线,持有弱引用
 	 * @param InReferenceSpline 所属Spline
@@ -40,13 +40,15 @@ public:
 	 * 设置道路Segment和连接点信息，分别传入，不要该函数前合并连接点和原本连续的Segments；在该函数中会进行合并
 	 * @param InRoadWithConnect 
 	 */
-	void SetRoadInfo(const FRoadSegmentsGroup & InRoadWithConnect);
-	
+	void SetRoadInfo(const FRoadSegmentsGroup& InRoadWithConnect);
+
 	virtual bool GenerateMesh() override;
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
 
 
-	TArray<FVector> GetRoadPathPoints(bool bForwardOrder=true);
+	[[nodiscard]] TArray<FVector> GetRoadEdgePoints(bool bForwardOrderDir = true);
+
+	void GetConnectionOrderOfIntersection(int32& OutLocFromIndex, int32& OutLocEndIndex) const;
 
 protected:
 	bool bIsLocalSpace = false;
@@ -66,6 +68,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	FLaneMeshInfo RoadInfo{500.0f};
-	
-	static int32 IntersectionGlobalIndex;
+
+	static int32 RoadGlobalIndex;
+
+	int32 StartToIntersectionIndex = INT32_ERROR;
+	int32 EndToIntersectionIndex = INT32_ERROR;
 };

@@ -10,15 +10,15 @@
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 
-int32 URoadMeshGenerator::IntersectionGlobalIndex = -1;
+int32 URoadMeshGenerator::RoadGlobalIndex = -1;
 // Sets default values for this component's properties
 URoadMeshGenerator::URoadMeshGenerator()
 {
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = false;
-	GlobalIndex = IntersectionGlobalIndex;
-	IntersectionGlobalIndex++;
+	GlobalIndex = RoadGlobalIndex;
+	RoadGlobalIndex++;
 }
 
 void URoadMeshGenerator::DrawDebugElemOnSweepPoint()
@@ -83,6 +83,8 @@ void URoadMeshGenerator::SetRoadInfo(const FRoadSegmentsGroup& InRoadWithConnect
 		SweepPointsTrans.Emplace(InRoadWithConnect.TailConnectionTrans);
 	}
 	bIsLocalSpace = false;
+	StartToIntersectionIndex = InRoadWithConnect.FromIntersectionIndex;
+	EndToIntersectionIndex = InRoadWithConnect.ToIntersectionIndex;
 }
 
 bool URoadMeshGenerator::GenerateMesh()
@@ -138,16 +140,32 @@ void URoadMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* InMeshCom
 	}
 }
 
-TArray<FVector> URoadMeshGenerator::GetRoadPathPoints(bool bForwardOrder)
+TArray<FVector> URoadMeshGenerator::GetRoadEdgePoints(bool bForwardOrderDir)
 {
 	TArray<FVector> Results;
+	if (SweepPointsTrans.IsEmpty())
+	{
+		return Results;
+	}
 	Results.SetNum(SweepPointsTrans.Num());
 	for (int32 i = 0; i < SweepPointsTrans.Num(); ++i)
 	{
-		int32 TargetIndex = bForwardOrder ? i : SweepPointsTrans.Num() - 1 - i;
-		Results[TargetIndex] =UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(), SweepPointsTrans[i].GetLocation());
+		int32 TargetIndex = bForwardOrderDir ? i : SweepPointsTrans.Num() - 1 - i;
+		FVector CenterLocation = UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(),
+		                                                               SweepPointsTrans[i].GetLocation());
+		FRotator CenterRotation = UKismetMathLibrary::TransformRotation(GetOwner()->GetTransform(),
+		                                                                SweepPointsTrans[i].GetRotation().Rotator());
+		FVector CenterToEdge = RoadInfo.CrossSectionCoord[0].X * CenterRotation.Vector().RotateAngleAxis(
+			bForwardOrderDir ? -90.0 : 90.0, FVector::UpVector);
+		Results[TargetIndex] = CenterLocation + CenterToEdge;
 	}
 	return Results;
+}
+
+void URoadMeshGenerator::GetConnectionOrderOfIntersection(int32& OutLocFromIndex, int32& OutLocEndIndex) const
+{
+	OutLocFromIndex = StartToIntersectionIndex;
+	OutLocEndIndex = EndToIntersectionIndex;
 }
 
 void URoadMeshGenerator::ConvertPointToLocalSpace(const FTransform& InActorTransform)
