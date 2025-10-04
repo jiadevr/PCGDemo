@@ -1071,8 +1071,8 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 			URoadMeshGenerator* RoadGenerator=RoadGeneratorWeak.Pin().Get();
 			//这里知道是那条路，但不知道顺序
 			RoadGenerator->GetRoadPathPoints()*/
-			PrintStr+= FString::Printf(TEXT("-(%d)-"), RoadIndexes[i]);
-			PrintStr+= FString::Printf(TEXT("[%d]"), IntersectionIndexes[i]);
+			PrintStr+= FString::Printf(TEXT("-(%d)-"), RoadIndexes[j]);
+			PrintStr+= FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
 		}
 		UE_LOG(LogTemp,Display,TEXT("Block Loop:%d {%s}"),i,*PrintStr);
 	}
