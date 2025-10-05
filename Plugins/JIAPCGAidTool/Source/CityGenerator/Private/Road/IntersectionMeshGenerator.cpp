@@ -31,6 +31,11 @@ UIntersectionMeshGenerator::UIntersectionMeshGenerator()
 void UIntersectionMeshGenerator::SetIntersectionSegmentsData(const TArray<FIntersectionSegment>& InIntersectionData)
 {
 	IntersectionsData = InIntersectionData;
+	for (int32 i = 0; i < IntersectionsData.Num(); ++i)
+	{
+		IntersectionsData[i].OwnerGlobalIndex = GetGlobalIndex();
+		IntersectionsData[i].EntryLocalIndex = i;
+	}
 }
 
 TArray<FIntersectionSegment> UIntersectionMeshGenerator::GetRoadConnectionPoint(
@@ -179,12 +184,14 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		RoadInterfaceSegment.IntersectionEndRotWS = (IntersectionsData[i].IntersectionEndRotWS);
 		RoadInterfaceSegment.OwnerGlobalIndex = GetGlobalIndex();
 		//这个值是为了给建图复用排序
-		RoadInterfaceSegment.EntryLocalIndex = i;
+		RoadInterfaceSegment.EntryLocalIndex = IntersectionsData[i].EntryLocalIndex;
 		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
 		if (bShowDebug)
 		{
-			//连接点
-			DrawDebugBox(GetWorld(), FVector(ConnectionLoc, 0.0), FVector(100.0f), FColor::Blue, true, -1, 0, 10.0f);
+			//连接点，显示排序结果
+			FColor ConnectionPointColor = FColor(0, 0, (i + 1.0 / IntersectionSegmentNum * 255));
+			DrawDebugBox(GetWorld(), FVector(ConnectionLoc, 0.0), FVector(100.0f), ConnectionPointColor, true, -1, 0,
+			             10.0f);
 		}
 	}
 	//由于传入节点已经排序，线段只会和相邻的相交，单循环可以解决
@@ -294,7 +301,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	//TODO:这个排序算法需要优化每段本身基本有序;两线交点在判断同一侧时会出现点混乱
 	if (Visited.Num() > 2)
 	{
-		URoadGeometryUtilities::SortPointCounterClockwise(CenterLocation, IntersectionConstructionPoints);
+		URoadGeometryUtilities::SortPointClockwise(CenterLocation, IntersectionConstructionPoints);
 	}
 	for (int i = 0; i < IntersectionConstructionPoints.Num(); ++i)
 	{

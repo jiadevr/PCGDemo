@@ -150,7 +150,7 @@ bool URoadGeometryUtilities::Get2DIntersection(USplineComponent* TargetSplineA, 
 	return !IntersectionsIn2DSpace.IsEmpty();
 }
 
-void URoadGeometryUtilities::SortPointCounterClockwise(const FVector2D& Center, TArray<FVector2D>& ArrayToSort)
+void URoadGeometryUtilities::SortPointClockwise(const FVector2D& Center, TArray<FVector2D>& ArrayToSort)
 {
 	ArrayToSort.Sort([&Center](const FVector2D& A, const FVector2D& B)
 	{

@@ -39,7 +39,7 @@ public:
 	static bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
 						   TArray<FVector2D>& IntersectionsIn2DSpace);
 
-	static void SortPointCounterClockwise(const FVector2D& Center,TArray<FVector2D>& ArrayToSort);
+	static void SortPointClockwise(const FVector2D& Center,TArray<FVector2D>& ArrayToSort);
 
 	/**
 	 * 使用Shoelace法计算有序（顺时针、逆时针）顶点围成的多边形面积

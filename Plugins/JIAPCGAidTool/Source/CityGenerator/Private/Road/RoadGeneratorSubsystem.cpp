@@ -12,6 +12,7 @@
 #include "GeometryScript/MeshNormalsFunctions.h"
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "Road/IntersectionMeshGenerator.h"
 #include "Road/RoadGeometryUtilities.h"
 #include "Road/RoadGraphForBlock.h"
@@ -140,6 +141,13 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 		//切割交点分段
 		if (TearIntersectionToSegments(IntersectionResults[i], IntersectionBuildData))
 		{
+			for (int32 k = 0; k < IntersectionBuildData.Num(); ++k)
+			{
+				FColor DebugColor = FColor((k + 1.0) / IntersectionBuildData.Num() * 255, 0, 0);
+				DrawDebugSphere(UEditorComponentUtilities::GetEditorContext()->GetWorld(),
+				                IntersectionBuildData[k].IntersectionEndPointWS, 100.0, 8, DebugColor, true, -1, 0,
+				                10.0f);
+			}
 			//生成交点对象
 			FTransform ActorTransform = FTransform::Identity;
 			ActorTransform.SetLocation(IntersectionResults[i].WorldLocation);
@@ -470,26 +478,31 @@ bool URoadGeneratorSubsystem::TearIntersectionToSegments(
 	{
 		return false;
 	}
-	//根据逆时针顺序排序
+	//根据顺时针顺序排序，X正方向为0，Y正方向为正
 	FVector IntersectionPoint = InIntersectionInfo.WorldLocation;
+	UE_LOG(LogTemp, Display, TEXT("Begin Sort"));
 	OutSegments.Sort([&IntersectionPoint](const FIntersectionSegment& A, const FIntersectionSegment& B)
 	{
 		FVector ProjectedA = FVector::VectorPlaneProject((A.IntersectionEndPointWS - IntersectionPoint),
 		                                                 FVector::UnitZ());
-		FVector2D RelA{ProjectedA.X, ProjectedA.Y};
+		FVector2D RelA(ProjectedA);
 		FVector ProjectedB = FVector::VectorPlaneProject((B.IntersectionEndPointWS - IntersectionPoint),
 		                                                 FVector::UnitZ());
-		FVector2D RelB{ProjectedB.X, ProjectedB.Y};
+		FVector2D RelB(ProjectedB);
 
 		float AngleA = FMath::Atan2(RelA.Y, RelA.X);
 		float AngleB = FMath::Atan2(RelB.Y, RelB.X);
 
-		// 转换为[0, 2π)范围
+		UE_LOG(LogTemp, Display, TEXT("AngleA: %f,AngleB: %f"), AngleA, AngleB);
+		// Atan2返回范围为[-π,π)转换为[0, 2π)范围
 		if (AngleA < 0) AngleA += 2 * PI;
 		if (AngleB < 0) AngleB += 2 * PI;
 
 		if (AngleA != AngleB)
 		{
+			float AngleAInDegree=FMath::RadiansToDegrees(AngleA);
+			float AngleBInDegree=FMath::RadiansToDegrees(AngleB);
+			UE_LOG(LogTemp, Display, TEXT("AngleA: %f FromLoc:%s,AngleB: %f FromLoc:%s"), AngleAInDegree,*A.IntersectionEndPointWS.ToString(), AngleBInDegree,*B.IntersectionEndPointWS.ToString());
 			return AngleA < AngleB; // 极角小的排在前面
 		}
 		else
@@ -498,6 +511,7 @@ bool URoadGeneratorSubsystem::TearIntersectionToSegments(
 			return RelA.SizeSquared() < RelB.SizeSquared();
 		}
 	});
+	UE_LOG(LogTemp, Display, TEXT("End Sort"));
 	return true;
 }
 
@@ -1049,27 +1063,28 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 	{
 		return;
 	}
-	TArray<FBlockLinkInfo> BlockLoop = RoadGraph->GetSurfaceInGraph();
+	TArray<FBlockLinkInfo> BlockLoops = RoadGraph->GetSurfaceInGraph();
 	//移除外轮廓
-	RemoveInvalidLoopInline(BlockLoop);
-	if (BlockLoop.Num() <= 0)
+	RemoveInvalidLoopInline(BlockLoops);
+	if (BlockLoops.Num() <= 0)
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner("Find Null Valid Loop");
 		return;
 	}
+	TArray<TArray<FVector>> AllLoopPath;
 	//获取生成轮廓信息
-	for (int32 i = 0; i < BlockLoop.Num(); ++i)
+	for (int32 i = 0; i < BlockLoops.Num(); ++i)
 	{
-		const TArray<int32>& RoadIndexes = BlockLoop[i].RoadIndexes;
-		const TArray<int32>& IntersectionIndexes = BlockLoop[i].IntersectionIndexes;
+		const TArray<int32>& RoadIndexes = BlockLoops[i].RoadIndexes;
+		const TArray<int32>& IntersectionIndexes = BlockLoops[i].IntersectionIndexes;
 		FColor DebugColor = FColor::MakeRandomColor();
 		FString PrintStr = "";
 		PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes.Last());
-		TArray<FVector> LoopPath = ;
+		TArray<FVector> SingleLoopPath;
 		for (int j = 0; j < RoadIndexes.Num(); ++j)
 		{
-			PrintStr += FString::Printf(TEXT("-(%d)-"), RoadIndexes[i]);
-			TWeakObjectPtr<URoadMeshGenerator> RoadGeneratorWeak = IDToRoadGenerator[RoadIndexes[i]];
+			PrintStr += FString::Printf(TEXT("-(%d)-"), RoadIndexes[j]);
+			TWeakObjectPtr<URoadMeshGenerator> RoadGeneratorWeak = IDToRoadGenerator[RoadIndexes[j]];
 			if (!RoadGeneratorWeak.IsValid())
 			{
 				continue;
@@ -1092,12 +1107,21 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 				(RoadPathFromConnection==GraphStartEdge||RoadPathFromConnection==GraphEndEdge)&&(RoadPathToConnection==
 					GraphStartEdge||RoadPathToConnection==GraphEndEdge));
 			//根据道路朝向提取Location
-			TArray<FVector> RoadCenterLocArray = RoadGenerator->GetRoadEdgePoints(
+			TArray<FVector> RoadEdgeLocArray = RoadGenerator->GetRoadEdgePoints(
 				RoadPathFromConnection == GraphStartEdge);
-
+			SingleLoopPath.Append(RoadEdgeLocArray);
+			for (const FVector& RoadEdgePoint : RoadEdgeLocArray)
+			{
+				DrawDebugSphere(RoadGenerator->GetWorld(), RoadEdgePoint, 100.0f, 8, DebugColor,
+				                true);
+			}
 			//十字路口的衔接点
 			PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
 		}
+		for (const FVector& PathPoint : SingleLoopPath)
+		{
+		}
+		AllLoopPath.Emplace(SingleLoopPath);
 		UE_LOG(LogTemp, Display, TEXT("Block Loop:%d {%s}"), i, *PrintStr);
 	}
 	//生成Actor并挂载
