@@ -9,6 +9,7 @@
 #include "Road/RoadSegmentStruct.h"
 #include "RoadGeneratorSubsystem.generated.h"
 
+class UBlockMeshGenerator;
 class URoadMeshGenerator;
 class UIntersectionMeshGenerator;
 class USplineComponent;
@@ -256,6 +257,9 @@ protected:
 
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<UIntersectionMeshGenerator>> IDToIntersectionGenerator;
+
+	UPROPERTY()
+	TMap<int32,TWeakObjectPtr<UBlockMeshGenerator>> IDToBlockGenerator;
 
 public:
 	UFUNCTION(BlueprintCallable)

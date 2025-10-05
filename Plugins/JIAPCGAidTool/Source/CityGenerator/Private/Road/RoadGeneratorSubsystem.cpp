@@ -13,6 +13,7 @@
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetStringLibrary.h"
+#include "Road/BlockMeshGenerator.h"
 #include "Road/IntersectionMeshGenerator.h"
 #include "Road/RoadGeometryUtilities.h"
 #include "Road/RoadGraphForBlock.h"
@@ -500,9 +501,10 @@ bool URoadGeneratorSubsystem::TearIntersectionToSegments(
 
 		if (AngleA != AngleB)
 		{
-			float AngleAInDegree=FMath::RadiansToDegrees(AngleA);
-			float AngleBInDegree=FMath::RadiansToDegrees(AngleB);
-			UE_LOG(LogTemp, Display, TEXT("AngleA: %f FromLoc:%s,AngleB: %f FromLoc:%s"), AngleAInDegree,*A.IntersectionEndPointWS.ToString(), AngleBInDegree,*B.IntersectionEndPointWS.ToString());
+			float AngleAInDegree = FMath::RadiansToDegrees(AngleA);
+			float AngleBInDegree = FMath::RadiansToDegrees(AngleB);
+			UE_LOG(LogTemp, Display, TEXT("AngleA: %f FromLoc:%s,AngleB: %f FromLoc:%s"), AngleAInDegree,
+			       *A.IntersectionEndPointWS.ToString(), AngleBInDegree, *B.IntersectionEndPointWS.ToString());
 			return AngleA < AngleB; // 极角小的排在前面
 		}
 		else
@@ -1090,8 +1092,6 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 				continue;
 			}
 			URoadMeshGenerator* RoadGenerator = RoadGeneratorWeak.Pin().Get();
-			//这里知道是那条路，但不知道顺序
-
 			//道路的起点终点
 			int32 RoadPathFromConnection = INT32_ERROR;
 			int32 RoadPathToConnection = INT32_ERROR;
@@ -1125,6 +1125,32 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		UE_LOG(LogTemp, Display, TEXT("Block Loop:%d {%s}"), i, *PrintStr);
 	}
 	//生成Actor并挂载
+	for (int32 i = 0; i < AllLoopPath.Num(); i++)
+	{
+		FString ActorLabel = FString::Printf(TEXT("RoadActor%d"), i);
+		FTransform ActorTransform = FTransform::Identity;
+		ActorTransform.SetLocation(AllLoopPath[i][0]);
+		AActor* BlockActor = UEditorComponentUtilities::SpawnEmptyActor(ActorLabel, ActorTransform);
+		ensureAlways(nullptr!=BlockActor);
+
+		UActorComponent* MeshCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+			BlockActor, UDynamicMeshComponent::StaticClass());
+		UDynamicMeshComponent* MeshComp = Cast<UDynamicMeshComponent>(MeshCompTemp);
+		UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+			BlockActor, UBlockMeshGenerator::StaticClass());
+		UBlockMeshGenerator* GeneratorComp = Cast<UBlockMeshGenerator>(GeneratorCompTemp);
+		GeneratorComp->SetSweepPath(AllLoopPath[i]);
+		IDToBlockGenerator.Emplace(GeneratorComp->GetGlobalIndex(), TWeakObjectPtr<UBlockMeshGenerator>(GeneratorComp));
+	}
+	//生成Mesh
+	for (const auto& IDGeneratorPair : IDToBlockGenerator)
+	{
+		if (!IDGeneratorPair.Value.IsValid())
+		{
+			continue;
+		}
+		IDGeneratorPair.Value->GenerateMesh();
+	}
 }
 
 void URoadGeneratorSubsystem::RemoveInvalidLoopInline(TArray<FBlockLinkInfo>& OutBlockLoops)
