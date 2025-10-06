@@ -67,7 +67,7 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
 		return false;
 	}
-	TArray<FVector2D> ExtrudeShape = CreateExtrudeShape();
+	ExtrudeShape = CreateExtrudeShape();
 	if (ExtrudeShape.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
@@ -99,6 +99,19 @@ void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* I
 	{
 		MeshComponent = TWeakObjectPtr<UDynamicMeshComponent>(InMeshComponent);
 	}
+}
+
+TArray<FVector2D> UIntersectionMeshGenerator::GetTransitionalPoints(int32 FromEntryIndex, bool bOpenInterval)
+{
+	TArray<FVector2D> Results;
+	int32 ArrayLength = bOpenInterval ? TransitionalSubdivisionNum - 2 : TransitionalSubdivisionNum;
+	Results.SetNum(ArrayLength);
+	int32 EntryNum = ExtrudeShape.Num() / TransitionalSubdivisionNum;
+	int32 FromPointArrayIndex = ((FromEntryIndex + 1) % EntryNum) * TransitionalSubdivisionNum;
+	FromPointArrayIndex += bOpenInterval ? 1 : 0;
+	FMemory::Memcpy(Results.GetData(), ExtrudeShape.GetData() + FromPointArrayIndex,
+	                ArrayLength * sizeof(FVector2D));
+	return Results;
 }
 
 /*int32 UIntersectionMeshGenerator::GetOverlapSegmentOnGivenSpline(TWeakObjectPtr<USplineComponent> TargetSpline)
@@ -261,8 +274,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	//交点计算完毕获得在相交内容之间插值获得弧线过渡
 	//不添加SplineComponent，直接使用
 	FInterpCurveVector2D TransitionalSpline;
+	TArray<TArray<FVector2D>> AllTransitionalSplinePoints;
 	TArray<FVector2D> TransitionalSplinePoints;
-	TransitionalSplinePoints.SetNum(10);
+	TransitionalSplinePoints.SetNum(TransitionalSubdivisionNum);
 	//Set不保序，所以后边依然需要排序
 	for (const auto& EdgeIntersectionElem : Visited)
 	{
@@ -289,19 +303,43 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		TransitionalSpline.Points.Add(FromPoint);
 		TransitionalSpline.Points.Add(ToPoint);
 		TransitionalSplinePoints[0] = FromEdgeStartLoc;
-		for (int i = 1; i < 9; ++i)
+		for (int i = 1; i < TransitionalSubdivisionNum - 1; ++i)
 		{
-			float InputKey = i / 10.0f;
+			float InputKey = i * (1.0f) / (TransitionalSubdivisionNum - 1);
 			FVector2D SubdivisionLoc = TransitionalSpline.Eval(InputKey, FVector2D::Zero());
 			TransitionalSplinePoints[i] = SubdivisionLoc;
 		}
-		TransitionalSplinePoints[9] = ToEdgeStartLoc;
-		IntersectionConstructionPoints.Append(TransitionalSplinePoints);
+		TransitionalSplinePoints.Last() = ToEdgeStartLoc;
+		AllTransitionalSplinePoints.Emplace(TransitionalSplinePoints);
 	}
-	//TODO:这个排序算法需要优化每段本身基本有序;两线交点在判断同一侧时会出现点混乱
+	//更新排序算法，以连续点中的首元素进行判断
 	if (Visited.Num() > 2)
 	{
-		URoadGeometryUtilities::SortPointClockwise(CenterLocation, IntersectionConstructionPoints);
+		//URoadGeometryUtilities::SortPointClockwise(CenterLocation, IntersectionConstructionPoints);
+		AllTransitionalSplinePoints.Sort([&CenterLocation](const TArray<FVector2D>& A, const TArray<FVector2D>& B)
+		{
+			FVector2D RelA = A[0] - CenterLocation;
+			FVector2D RelB = B[0] - CenterLocation;
+
+			float AngleA = FMath::Atan2(RelA.Y, RelA.X);
+			float AngleB = FMath::Atan2(RelB.Y, RelB.X);
+			// Atan2返回范围为[-π,π)转换为[0, 2π)范围
+			if (AngleA < 0) AngleA += 2 * PI;
+			if (AngleB < 0) AngleB += 2 * PI;
+			if (AngleA != AngleB)
+			{
+				return AngleA < AngleB; // 极角小的排在前面
+			}
+			else
+			{
+				// 角度相同，按距离排序（近的在前）
+				return RelA.SizeSquared() < RelB.SizeSquared();
+			}
+		});
+	}
+	for (const TArray<FVector2D>& SingleTransition : AllTransitionalSplinePoints)
+	{
+		IntersectionConstructionPoints.Append(SingleTransition);
 	}
 	for (int i = 0; i < IntersectionConstructionPoints.Num(); ++i)
 	{

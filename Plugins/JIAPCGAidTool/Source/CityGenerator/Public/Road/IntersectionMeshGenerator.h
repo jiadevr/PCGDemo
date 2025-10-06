@@ -50,7 +50,14 @@ public:
 
 	//这个函数有问题，看后续还要不要维护
 	//int32 GetOverlapSegmentOnGivenSpline(TWeakObjectPtr<USplineComponent> TargetSpline);
-
+	
+	
+	/**
+	 * 获取从给定EntryIndex到顺时针下一个Entry的过渡点数组
+	 * @param FromEntryIndex EntryIndex,以该点为起点
+	 * @return 到下一个Entry的过渡点的数组
+	 */
+	TArray<FVector2D> GetTransitionalPoints(int32 FromEntryIndex,bool bOpenInterval=true);
 protected:
 	/**
 	 * 核心函数，创建交点二维截面
@@ -58,6 +65,9 @@ protected:
 	 */
 	[[nodiscard]] TArray<FVector2D> CreateExtrudeShape();
 
+	TArray<FVector2D> ExtrudeShape;
+
+	int32 TransitionalSubdivisionNum=10;
 	/**
 	 * 计算模拟Spline的Tangent值，对于每个端点都需要计算一次
 	 * @param Intersection Spline的Segment交点，Spline不会经过该点
