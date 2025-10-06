@@ -1082,6 +1082,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		FColor DebugColor = FColor::MakeRandomColor();
 		FString PrintStr = "";
 		PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes.Last());
+		//单个循环边组
 		TArray<FVector> SingleLoopPath;
 		for (int j = 0; j < RoadIndexes.Num(); ++j)
 		{
@@ -1117,9 +1118,25 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 			}
 			//十字路口的衔接点
 			PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
-		}
-		for (const FVector& PathPoint : SingleLoopPath)
-		{
+			TWeakObjectPtr<UIntersectionMeshGenerator> IntersectionGeneratorWeak = IDToIntersectionGenerator[
+				IntersectionIndexes[j]];
+			if (!IntersectionGeneratorWeak.IsValid())
+			{
+				UE_LOG(LogTemp, Error, TEXT("Intersection Indexes %d Was Invalid"), IntersectionIndexes[j])
+				continue;
+			}
+			UIntersectionMeshGenerator* IntersectionGenerator = IntersectionGeneratorWeak.Pin().Get();
+			//需要知道的当前道路是从哪个EntryIndex进入的
+			int32 FromIntersection = j == 0 ? IntersectionIndexes.Last() : IntersectionIndexes[j - 1];
+			int32 EntryIndex = RoadGraph->
+				FindEdgeOrderInGraph(FromIntersection, IntersectionIndexes[j], RoadIndexes[j]);
+			if (EntryIndex == INT32_ERROR)
+			{
+				UE_LOG(LogTemp, Error, TEXT("Find Null Edge In Graph"))
+				continue;
+			}
+			TArray<FVector> TransitionalPoints = IntersectionGenerator->GetTransitionalPoints(EntryIndex);
+			SingleLoopPath.Append(TransitionalPoints);
 		}
 		AllLoopPath.Emplace(SingleLoopPath);
 		UE_LOG(LogTemp, Display, TEXT("Block Loop:%d {%s}"), i, *PrintStr);
@@ -1139,6 +1156,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		UActorComponent* GeneratorCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 			BlockActor, UBlockMeshGenerator::StaticClass());
 		UBlockMeshGenerator* GeneratorComp = Cast<UBlockMeshGenerator>(GeneratorCompTemp);
+		GeneratorComp->SetMeshComponent(MeshComp);
 		GeneratorComp->SetSweepPath(AllLoopPath[i]);
 		IDToBlockGenerator.Emplace(GeneratorComp->GetGlobalIndex(), TWeakObjectPtr<UBlockMeshGenerator>(GeneratorComp));
 	}

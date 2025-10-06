@@ -141,7 +141,7 @@ TArray<FBlockLinkInfo> URoadGraph::GetSurfaceInGraph()
 	{
 		return Results;
 	}
-	
+
 	//二维表转一维表用于和bVisited形成对应；但因为RoadIndex可以删除数组可能不连贯
 	//不能直接使用RoadIndex作为数组ID，可能开头不为0、可能不连贯、双向无法区分
 	//设计一个编码算法节点A->B，当A<B时返回2I；当A>B时返回2I+1，为了能拿到节点需要从节点开始遍历
@@ -210,6 +210,22 @@ URoadGraph::FRoadEdge* URoadGraph::FindNextEdge(int32 NodeIndex, const FRoadEdge
 		}
 	}
 	return &Graph[NodeIndex][(i + 1) % NeighboursCount];
+}
+
+int32 URoadGraph::FindEdgeOrderInGraph(int32 FromNodeInex, int32 ToNodeIndex, int32 RoadIndex) const
+{
+	if (!Graph.IsValidIndex(FromNodeInex))
+	{
+		return INT32_ERROR;
+	}
+	for (int i = 0; i < Graph[FromNodeInex].Num(); ++i)
+	{
+		if (Graph[FromNodeInex][i].RoadIndex == RoadIndex && Graph[FromNodeInex][i].ToNodeIndex == ToNodeIndex)
+		{
+			return i;
+		}
+	}
+	return INT32_ERROR;
 }
 
 int32 URoadGraph::GetDirectionalEdgeIndex(int32 FromNodeIndex, int32 ToNodeIndex, int32 RoadIndex)

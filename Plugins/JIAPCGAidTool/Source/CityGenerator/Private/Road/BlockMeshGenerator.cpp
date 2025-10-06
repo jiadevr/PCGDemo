@@ -48,14 +48,14 @@ bool UBlockMeshGenerator::GenerateMesh()
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
 			FString::Printf(
-				TEXT("[ERROR]%s Create Intersection Failed,Null MeshComp Found!"), *Owner->GetActorLabel()));
+				TEXT("[ERROR]%s Create Block Failed,Null MeshComp Found!"), *Owner->GetActorLabel()));
 		return false;
 	}
 	if (SweepPath.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
 			FString::Printf(
-				TEXT("[ERROR]%s Create Intersection Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
+				TEXT("[ERROR]%s Create Block Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
 		return false;
 	}
 	
@@ -65,7 +65,7 @@ bool UBlockMeshGenerator::GenerateMesh()
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
 			FString::Printf(
-				TEXT("[ERROR]%s Create Intersection Failed,Extrude Is Not Defined"), *Owner->GetActorLabel()));
+				TEXT("[ERROR]%s Create Block Failed,Extrude Is Not Defined"), *Owner->GetActorLabel()));
 		return false;
 	}
 

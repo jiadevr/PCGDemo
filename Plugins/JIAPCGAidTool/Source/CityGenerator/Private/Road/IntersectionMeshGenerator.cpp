@@ -101,16 +101,27 @@ void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* I
 	}
 }
 
-TArray<FVector2D> UIntersectionMeshGenerator::GetTransitionalPoints(int32 FromEntryIndex, bool bOpenInterval)
+TArray<FVector> UIntersectionMeshGenerator::GetTransitionalPoints(int32 FromEntryIndex, bool bOpenInterval)
 {
-	TArray<FVector2D> Results;
+	TArray<FVector> Results;
+	AActor* Owner = GetOwner();
+	if (Owner != nullptr)
+	{
+		return Results;
+	}
+	const FTransform OwnerTrans = Owner->GetTransform();
 	int32 ArrayLength = bOpenInterval ? TransitionalSubdivisionNum - 2 : TransitionalSubdivisionNum;
 	Results.SetNum(ArrayLength);
 	int32 EntryNum = ExtrudeShape.Num() / TransitionalSubdivisionNum;
 	int32 FromPointArrayIndex = ((FromEntryIndex + 1) % EntryNum) * TransitionalSubdivisionNum;
 	FromPointArrayIndex += bOpenInterval ? 1 : 0;
-	FMemory::Memcpy(Results.GetData(), ExtrudeShape.GetData() + FromPointArrayIndex,
-	                ArrayLength * sizeof(FVector2D));
+	/*FMemory::Memcpy(Results.GetData(), ExtrudeShape.GetData() + FromPointArrayIndex,
+	                ArrayLength * sizeof(FVector2D));*/
+	for (int i = FromEntryIndex; i < ArrayLength; ++i)
+	{
+		Results.Emplace(
+			UKismetMathLibrary::TransformLocation(OwnerTrans, FVector(ExtrudeShape[i], 0.0)));
+	}
 	return Results;
 }
 

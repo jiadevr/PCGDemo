@@ -57,7 +57,7 @@ public:
 	 * @param FromEntryIndex EntryIndex,以该点为起点
 	 * @return 到下一个Entry的过渡点的数组
 	 */
-	TArray<FVector2D> GetTransitionalPoints(int32 FromEntryIndex,bool bOpenInterval=true);
+	TArray<FVector> GetTransitionalPoints(int32 FromEntryIndex,bool bOpenInterval=true);
 protected:
 	/**
 	 * 核心函数，创建交点二维截面

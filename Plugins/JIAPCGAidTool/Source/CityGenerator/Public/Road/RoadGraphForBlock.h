@@ -129,6 +129,8 @@ protected:
 	 */
 	FRoadEdge* FindNextEdge(int32 NodeIndex, const FRoadEdge& CurrentEdgeIndex);
 
+	int32 FindEdgeOrderInGraph(int32 FromNodeInex, int32 ToNodeIndex, int32 RoadIndex) const;
+
 	/**
 	 * 图中边总计算
 	 */
