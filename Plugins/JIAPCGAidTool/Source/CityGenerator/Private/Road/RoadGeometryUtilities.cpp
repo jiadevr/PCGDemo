@@ -23,8 +23,16 @@ bool URoadGeometryUtilities::Get2DIntersection(const FVector2D& InSegmentAStart,
 	FVector2D VectorABStart = InSegmentBStart - InSegmentAStart;
 	//叉积获得AB逆时针夹角的Sin值，Sin值为0时两向量平行或共线
 	float Denominator = FVector2D::CrossProduct(VectorA, VectorB);
-	if (FMath::IsNearlyZero(Denominator))
+	//NearlyZero值太小了，0.04对应2.3度
+	if (Denominator < 0.04f)
 	{
+		//AB两点连线如果仍在范围内说明两者共线
+		Denominator = FVector2D::CrossProduct(VectorA, VectorABStart);
+		if (Denominator < 0.04f)
+		{
+			OutIntersection = InSegmentAStart * 0.5 + InSegmentBStart * 0.5;
+			return true;
+		}
 		return false;
 	}
 	//直线参数方程
