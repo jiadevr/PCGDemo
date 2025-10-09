@@ -109,7 +109,7 @@ protected:
 	void PrintConnectionToLog();
 
 	/**
-	 * 支持基于平面嵌入的「最小逆时针环」枚举算法，图中不包括几何数据，传入的边必须经过排序
+	 * 支持基于平面嵌入的「最小顺/逆时针环」枚举算法，图中不包括几何数据，传入的边必须经过排序
 	 * 给定一个道路网络（路口=顶点，道路=无向边），找出所有被道路完全包围、且内部不再被任何道路横穿的最小面域。
 	 * 模拟半边计算图中的插入面，会包括外轮廓边（可以配合点坐标使用Shoelace公式去除）
 	 * @return 外轮廓数组，以边开始，首个顶点位于IntersectionIndexes.Last(0)
@@ -129,7 +129,14 @@ protected:
 	 */
 	FRoadEdge* FindNextEdge(int32 NodeIndex, const FRoadEdge& CurrentEdgeIndex);
 
-	int32 FindEdgeOrderInGraph(int32 FromNodeInex, int32 ToNodeIndex, int32 RoadIndex) const;
+	/**
+	 * 邻接表记录的是从当前节点**出发**的EntryIndex，需要利用双向边特点查询道路从道路起点（FromNodeIndex）进入当前节点（CurrentNodeIndex）时的RoadIndex
+	 * @param CurrentNodeIndex 当前节点，对应遍历过程中当前边终点
+	 * @param FromNodeIndex 道路起点,对应图遍历过程中当前边起点
+	 * @param EdgeIndex 道路编号
+	 * @return 沿道路方向进入当前节点时的EntryIndex
+	 */
+	int32 FindEdgeEntryIndex(int32 CurrentNodeIndex, int32 FromNodeIndex, int32 EdgeIndex) const;
 
 	/**
 	 * 图中边总计算

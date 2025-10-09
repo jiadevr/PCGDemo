@@ -101,11 +101,11 @@ void UIntersectionMeshGenerator::SetMeshComponent(class UDynamicMeshComponent* I
 	}
 }
 
-TArray<FVector> UIntersectionMeshGenerator::GetTransitionalPoints(int32 FromEntryIndex, bool bOpenInterval)
+TArray<FVector> UIntersectionMeshGenerator::GetTransitionalPoints(int32 EntryIndex, bool bOpenInterval)
 {
 	TArray<FVector> Results;
 	AActor* Owner = GetOwner();
-	if (Owner != nullptr)
+	if (Owner == nullptr)
 	{
 		return Results;
 	}
@@ -113,16 +113,35 @@ TArray<FVector> UIntersectionMeshGenerator::GetTransitionalPoints(int32 FromEntr
 	int32 ArrayLength = bOpenInterval ? TransitionalSubdivisionNum - 2 : TransitionalSubdivisionNum;
 	Results.SetNum(ArrayLength);
 	int32 EntryNum = ExtrudeShape.Num() / TransitionalSubdivisionNum;
-	int32 FromPointArrayIndex = ((FromEntryIndex + 1) % EntryNum) * TransitionalSubdivisionNum;
+	int32 FromPointArrayIndex = EntryIndex * TransitionalSubdivisionNum;
+	UE_LOG(LogTemp, Display, TEXT("Intersection:%d,Enter From:%d,Chose SectionIndex %d"), GetGlobalIndex(),
+	       EntryIndex, FromPointArrayIndex);
 	FromPointArrayIndex += bOpenInterval ? 1 : 0;
-	/*FMemory::Memcpy(Results.GetData(), ExtrudeShape.GetData() + FromPointArrayIndex,
-	                ArrayLength * sizeof(FVector2D));*/
-	for (int i = FromEntryIndex; i < ArrayLength; ++i)
+	//需要转换到世界空间不能直接Memcpy
+	for (int i = 0; i < ArrayLength; ++i)
 	{
-		Results.Emplace(
-			UKismetMathLibrary::TransformLocation(OwnerTrans, FVector(ExtrudeShape[i], 0.0)));
+		Results[i] = UKismetMathLibrary::TransformLocation(
+			OwnerTrans, FVector(ExtrudeShape[FromPointArrayIndex + i], 0.0));
 	}
 	return Results;
+}
+
+void UIntersectionMeshGenerator::DrawTransitionalPoints()
+{
+	UE_LOG(LogTemp, Display, TEXT("Current Debug EntryIndex %d"), TargetEntryIndex);
+	AActor* Owner = GetOwner();
+	if (Owner == nullptr)
+	{
+		return;
+	}
+	const FTransform OwnerTrans = Owner->GetTransform();
+	for (int32 i = 0; i < TransitionalSubdivisionNum; ++i)
+	{
+		FVector DebugPoint = UKismetMathLibrary::TransformLocation(
+			OwnerTrans, FVector(ExtrudeShape[TargetEntryIndex * TransitionalSubdivisionNum + i], 0.0));
+		FColor DebugColor = FColor(i * 255 / TransitionalSubdivisionNum);
+		DrawDebugPoint(this->GetWorld(), DebugPoint, 50.0f, DebugColor, false, 10.0f, 1);
+	}
 }
 
 /*int32 UIntersectionMeshGenerator::GetOverlapSegmentOnGivenSpline(TWeakObjectPtr<USplineComponent> TargetSpline)
@@ -160,6 +179,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	//先计算Offset之后的点，先右后左
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
+		//IntersectionsData这个值有序，在Subsystem中经过了顺时针排序
 		const FVector2D CurrentSegmentEndPoint2D(IntersectionsData[i].IntersectionEndPointWS);
 		if (bShowDebug)
 		{
@@ -168,17 +188,16 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			                (IntersectionsData[i].bIsFlowIn ? FColor::Green : FColor::Orange), true, -1, 0,
 			                5);
 		}
+		//由Segment端点指向交汇点中心
 		const FVector2D VectorToCenter = FVector2D(CenterLocation - CurrentSegmentEndPoint2D);
-		//const FVector2D FlowDir =(VectorToCenter /* (IntersectionsData[i].bIsFlowIn ? 1.0 : -1.0)*/).GetSafeNormal();
 
 		FVector2D RightEdge = VectorToCenter.GetSafeNormal().GetRotated(90.0) * IntersectionsData[i].
 			RoadWidth * 0.5;
+		//划分道路左右两侧起点端点
 		//以FlowDir为基准,右侧两个点
-		//Start是延申分段，没有实际作用，可能考虑删除
-		FVector2D RightMid = CurrentSegmentEndPoint2D + RightEdge;
-		FVector2D RightStart = RightMid /* - VectorToCenter SegmentScalar*0.1*/;
+		FVector2D RightStart = CurrentSegmentEndPoint2D + RightEdge;;
 		RoadEdgePoints.Emplace(RightStart);
-		FVector2D RightEnd = RightMid + VectorToCenter * SegmentScalar;
+		FVector2D RightEnd = RightStart + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(RightEnd);
 		if (bShowDebug)
 		{
@@ -188,11 +207,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		}
 
 		//以FlowDir为基准,左侧两个点
-		//Start是延申分段，没有实际作用，可能考虑删除
-		FVector2D LeftMid = CurrentSegmentEndPoint2D + RightEdge * -1.0;
-		FVector2D LeftStart = LeftMid /* - VectorToCenter SegmentScalar*0.1*/;
+		FVector2D LeftStart = CurrentSegmentEndPoint2D + RightEdge * -1.0;
 		RoadEdgePoints.Emplace(LeftStart);
-		FVector2D LeftEnd = LeftMid + VectorToCenter * SegmentScalar;
+		FVector2D LeftEnd = LeftStart + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(LeftEnd);
 		if (bShowDebug)
 		{
@@ -200,7 +217,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
 			                          true);
 		}
-		//这段是为了解决部分情况生成的Mesh无法和路口相接，使用路口内缩的方式将交点向内偏移20cm
+		//这段是为了解决部分情况生成的Mesh无法和路口相接，使用路口内缩的方式将对外汇报的交点向内偏移20cm
 		FVector2D ConnectionLoc = CurrentSegmentEndPoint2D + VectorToCenter.GetSafeNormal() * 20.0f
 			/*- VectorToCenterSegmentScalar*0.1*/;
 		FIntersectionSegment RoadInterfaceSegment = IntersectionsData[i];
@@ -210,24 +227,18 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		//这个值是为了给建图复用排序
 		RoadInterfaceSegment.EntryLocalIndex = IntersectionsData[i].EntryLocalIndex;
 		ConnectionLocations.Emplace(IntersectionsData[i].OwnerSpline, RoadInterfaceSegment);
-		if (bShowDebug)
-		{
-			//连接点，显示排序结果
-			FColor ConnectionPointColor = FColor(0, 0, (i + 1.0 / IntersectionSegmentNum * 255));
-			DrawDebugBox(GetWorld(), FVector(ConnectionLoc, 0.0), FVector(100.0f), ConnectionPointColor, true, -1, 0,
-			             10.0f);
-		}
 	}
 	//由于传入节点已经排序，线段只会和相邻的相交，单循环可以解决
 	//记录样条相交情况和交点Index，交点保存于EdgeIntersections
 	TMap<TPair<int32, int32>, int32> Visited;
 	TArray<FVector2D> EdgeIntersections;
 	EdgeIntersections.Reserve(IntersectionSegmentNum);
+	//这段的目的是简化计算，遍历点分别和左侧邻居右侧邻居计算交点，但是会导致失序
 	for (int32 i = 0; i < IntersectionSegmentNum; i++)
 	{
 		for (int32 j = -1; j <= 1; j += 2)
 		{
-			//线段经过逆时针排序，右侧线段为i-1，左侧线段为i+1；函数不能接受负值
+			//计算交点的目标邻居，线段经过顺时针排序，右侧线段为i-1，左侧线段为i+1；函数不能接受负值
 			int32 TargetSegmentIndex = FMath::Modulo(i + j + IntersectionSegmentNum, IntersectionSegmentNum);
 			//统一格式方便后续剪枝
 			TPair<int32, int32> Visitor;
@@ -241,7 +252,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 					Visitor.Value = 0;
 				}
 			}
-			//这种情况是仅有两条线相交的时候能创建对侧
+			//这种情况是仅有两条线，在一点处相交但是一进一出
 			else
 			{
 				Visitor.Key = TargetSegmentIndex;
@@ -286,9 +297,10 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	//不添加SplineComponent，直接使用
 	FInterpCurveVector2D TransitionalSpline;
 	TArray<TArray<FVector2D>> AllTransitionalSplinePoints;
+	AllTransitionalSplinePoints.SetNum(EdgeIntersections.Num());
 	TArray<FVector2D> TransitionalSplinePoints;
 	TransitionalSplinePoints.SetNum(TransitionalSubdivisionNum);
-	//Set不保序，所以后边依然需要排序
+	//直接使用EntryIndex作为ID，避免后续排序造成的顺序紊乱
 	for (const auto& EdgeIntersectionElem : Visited)
 	{
 		if (-1 == EdgeIntersectionElem.Value)
@@ -321,32 +333,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			TransitionalSplinePoints[i] = SubdivisionLoc;
 		}
 		TransitionalSplinePoints.Last() = ToEdgeStartLoc;
-		AllTransitionalSplinePoints.Emplace(TransitionalSplinePoints);
-	}
-	//更新排序算法，以连续点中的首元素进行判断
-	if (Visited.Num() > 2)
-	{
-		//URoadGeometryUtilities::SortPointClockwise(CenterLocation, IntersectionConstructionPoints);
-		AllTransitionalSplinePoints.Sort([&CenterLocation](const TArray<FVector2D>& A, const TArray<FVector2D>& B)
-		{
-			FVector2D RelA = A[0] - CenterLocation;
-			FVector2D RelB = B[0] - CenterLocation;
-
-			float AngleA = FMath::Atan2(RelA.Y, RelA.X);
-			float AngleB = FMath::Atan2(RelB.Y, RelB.X);
-			// Atan2返回范围为[-π,π)转换为[0, 2π)范围
-			if (AngleA < 0) AngleA += 2 * PI;
-			if (AngleB < 0) AngleB += 2 * PI;
-			if (AngleA != AngleB)
-			{
-				return AngleA < AngleB; // 极角小的排在前面
-			}
-			else
-			{
-				// 角度相同，按距离排序（近的在前）
-				return RelA.SizeSquared() < RelB.SizeSquared();
-			}
-		});
+		AllTransitionalSplinePoints[EdgeIntersectionElem.Key.Key] = TransitionalSplinePoints;
 	}
 	for (const TArray<FVector2D>& SingleTransition : AllTransitionalSplinePoints)
 	{
@@ -361,7 +348,6 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		//世界空间转局部空间
 		IntersectionConstructionPoints[i] = IntersectionConstructionPoints[i] - CenterLocation;
 	}
-
 	return IntersectionConstructionPoints;
 }
 

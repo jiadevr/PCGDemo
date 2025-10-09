@@ -666,7 +666,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 				ContinuousSegmentsGroups, AllSegmentOnSpline,
 				PotentialConnection[0].GetGlobalIndex(), IntersectionSegment.IntersectionEndPointWS);
 			InsertInfo.IntersectionGlobalIndex = IntersectionSegment.OwnerGlobalIndex;
-			//传递逆时针排序给建图用
+			//传递顺时针排序给建图用
 			InsertInfo.EntryLocalIndex = IntersectionSegment.EntryLocalIndex;
 			float DisOfConnectionOnSpline = TargetSplinePtr->GetDistanceAlongSplineAtLocation(
 				IntersectionSegment.IntersectionEndPointWS, ESplineCoordinateSpace::World);
@@ -1111,11 +1111,6 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 			TArray<FVector> RoadEdgeLocArray = RoadGenerator->GetRoadEdgePoints(
 				RoadPathFromConnection == GraphStartEdge);
 			SingleLoopPath.Append(RoadEdgeLocArray);
-			for (const FVector& RoadEdgePoint : RoadEdgeLocArray)
-			{
-				DrawDebugSphere(RoadGenerator->GetWorld(), RoadEdgePoint, 100.0f, 8, DebugColor,
-				                true);
-			}
 			//十字路口的衔接点
 			PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
 			TWeakObjectPtr<UIntersectionMeshGenerator> IntersectionGeneratorWeak = IDToIntersectionGenerator[
@@ -1126,17 +1121,24 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 				continue;
 			}
 			UIntersectionMeshGenerator* IntersectionGenerator = IntersectionGeneratorWeak.Pin().Get();
-			//需要知道的当前道路是从哪个EntryIndex进入的
+			//注意顺序
 			int32 FromIntersection = j == 0 ? IntersectionIndexes.Last() : IntersectionIndexes[j - 1];
 			int32 EntryIndex = RoadGraph->
-				FindEdgeOrderInGraph(FromIntersection, IntersectionIndexes[j], RoadIndexes[j]);
+				FindEdgeEntryIndex(IntersectionIndexes[j], FromIntersection, RoadIndexes[j]);
 			if (EntryIndex == INT32_ERROR)
 			{
 				UE_LOG(LogTemp, Error, TEXT("Find Null Edge In Graph"))
 				continue;
 			}
+			UE_LOG(LogTemp, Display, TEXT("Road Index %d, Intersection %d,At EntryIndex %d"), RoadIndexes[j],
+			       IntersectionIndexes[j], EntryIndex);
 			TArray<FVector> TransitionalPoints = IntersectionGenerator->GetTransitionalPoints(EntryIndex);
 			SingleLoopPath.Append(TransitionalPoints);
+			for (const FVector& PathPoint : SingleLoopPath)
+			{
+				DrawDebugSphere(RoadGenerator->GetWorld(), PathPoint, 100.0f, 8, DebugColor,
+				                true);
+			}
 		}
 		AllLoopPath.Emplace(SingleLoopPath);
 		UE_LOG(LogTemp, Display, TEXT("Block Loop:%d {%s}"), i, *PrintStr);
@@ -1144,7 +1146,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 	//生成Actor并挂载
 	for (int32 i = 0; i < AllLoopPath.Num(); i++)
 	{
-		FString ActorLabel = FString::Printf(TEXT("RoadActor%d"), i);
+		FString ActorLabel = FString::Printf(TEXT("BlockActor%d"), i);
 		FTransform ActorTransform = FTransform::Identity;
 		ActorTransform.SetLocation(AllLoopPath[i][0]);
 		AActor* BlockActor = UEditorComponentUtilities::SpawnEmptyActor(ActorLabel, ActorTransform);

@@ -9,5 +9,7 @@ PCG学习及作品集
 4. MultiFloor：使用语法、DataTable生成**多层建筑**的示例，在SingleFloor的基础上进行优化和其他输入输出修改，成为PCG_CHA_BaseFloor基础子图表。PCH_MultiFloor层名称进行筛选多次调用基础子图标形成多层建筑。
 [[UE5]CitySample复刻计划(1)-PCGGrammar尝试](https://www.bilibili.com/opus/1106025637196333056)
 ## 程序化道路生成
-基于用户输入样条生成道路及交汇路口，使用UEC++实现。
+基于用户输入样条生成道路、交汇路口、街区，使用UEC++实现。
 [[UE5]CitySample复刻计划(2)-纯UECpp下的道路生成](https://www.bilibili.com/opus/1116054145300693027)
+[[UE5]CitySample复刻计划(3)-纯UECpp下的街区生成](https://www.bilibili.com/read/cv43301770)
+

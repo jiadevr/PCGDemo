@@ -48,6 +48,8 @@ public:
 
 	[[nodiscard]] TArray<FVector> GetRoadEdgePoints(bool bForwardOrderDir = true);
 
+	[[nodiscard]] TArray<FVector> GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true);
+
 	void GetConnectionOrderOfIntersection(int32& OutLocFromIndex, int32& OutLocEndIndex) const;
 
 protected:

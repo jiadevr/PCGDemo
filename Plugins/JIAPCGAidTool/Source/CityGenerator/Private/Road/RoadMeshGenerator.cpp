@@ -155,10 +155,38 @@ TArray<FVector> URoadMeshGenerator::GetRoadEdgePoints(bool bForwardOrderDir)
 		                                                               SweepPointsTrans[i].GetLocation());
 		FRotator CenterRotation = UKismetMathLibrary::TransformRotation(GetOwner()->GetTransform(),
 		                                                                SweepPointsTrans[i].GetRotation().Rotator());
+		//在路口左转，取道路左边线
 		FVector CenterToEdge = RoadInfo.CrossSectionCoord[0].X * CenterRotation.Vector().RotateAngleAxis(
 			bForwardOrderDir ? -90.0 : 90.0, FVector::UpVector);
 		Results[TargetIndex] = CenterLocation + CenterToEdge;
 	}
+	return Results;
+}
+
+TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForwardOrderDir)
+{
+	TArray<FVector> Results;
+	if (!ReferenceSpline.IsValid())
+	{
+		return Results;
+	}
+	USplineComponent* OwnerSpline = ReferenceSpline.Pin().Get();
+	FVector RoadStartLocation = SweepPointsTrans[0].GetLocation();
+	float StartAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadStartLocation, ESplineCoordinateSpace::Local);
+	float StartAsInputKey = OwnerSpline->GetInputKeyAtDistanceAlongSpline(StartAsDist);
+	FVector RoadEndLocation = SweepPointsTrans.Last().GetLocation();
+	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::Local);
+	float EndAsInputKey = OwnerSpline->GetInputKeyAtDistanceAlongSpline(EndAsDist);
+	//起点到终点跨过的ControlPoints个数
+	int32 ControlPointInRange = FMath::FloorToInt(EndAsInputKey) - FMath::CeilToInt(StartAsInputKey);
+	//是结尾到开头连接的部分
+	if (StartAsInputKey > EndAsInputKey)
+	{
+	}
+	else
+	{
+	}
+	// OwnerSpline->GetDistanceAlongSplineAtSplinePoint()
 	return Results;
 }
 

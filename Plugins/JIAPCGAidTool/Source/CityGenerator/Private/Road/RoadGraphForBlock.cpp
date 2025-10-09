@@ -212,16 +212,21 @@ URoadGraph::FRoadEdge* URoadGraph::FindNextEdge(int32 NodeIndex, const FRoadEdge
 	return &Graph[NodeIndex][(i + 1) % NeighboursCount];
 }
 
-int32 URoadGraph::FindEdgeOrderInGraph(int32 FromNodeInex, int32 ToNodeIndex, int32 RoadIndex) const
+int32 URoadGraph::FindEdgeEntryIndex(int32 CurrentNodeIndex, int32 FromNodeIndex, int32 EdgeIndex) const
 {
-	if (!Graph.IsValidIndex(FromNodeInex))
+	if (!Graph.IsValidIndex(CurrentNodeIndex))
 	{
 		return INT32_ERROR;
 	}
-	for (int i = 0; i < Graph[FromNodeInex].Num(); ++i)
+	for (int i = 0; i < Graph[CurrentNodeIndex].Num(); ++i)
 	{
-		if (Graph[FromNodeInex][i].RoadIndex == RoadIndex && Graph[FromNodeInex][i].ToNodeIndex == ToNodeIndex)
+		if (Graph[CurrentNodeIndex][i].RoadIndex == EdgeIndex && Graph[CurrentNodeIndex][i].ToNodeIndex ==
+			FromNodeIndex)
 		{
+			UE_LOG(LogTemp, Display,
+			       TEXT(
+				       "Find Entry Result: Road (%d) From Intersection[%d] Entry CurrentIntersection[%d] At EntryIndex[%d]"
+			       ), EdgeIndex, FromNodeIndex, CurrentNodeIndex, i);
 			return i;
 		}
 	}

@@ -182,8 +182,15 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditInstanceOnly)
 	float RoadWidth = 0;
 
+	/**
+	 * 所属Intersection的全局ID，在UIntersectionMeshGenerator::SetIntersectionSegmentsData中设定
+	 */
 	uint32 OwnerGlobalIndex = UINT32_ERROR;
 
+	/**
+	 * 所属道路连接到Intersection的哪个一个路口衔接点，局部编号每个交汇路口独立
+	 * 在UIntersectionMeshGenerator::SetIntersectionSegmentsData中设定
+	 */
 	int32 EntryLocalIndex = INT32_ERROR;
 };
 
@@ -275,6 +282,13 @@ struct FRoadSegmentsGroup
 	bool bHasTailConnection = false;
 	FTransform TailConnectionTrans;
 
+	/**
+	 * 道路构建时起始交会口的序号
+	 */
 	int32 FromIntersectionIndex;
+
+	/**
+	 * 道路构建时终止交会口的序号
+	 */
 	int32 ToIntersectionIndex;
 };
