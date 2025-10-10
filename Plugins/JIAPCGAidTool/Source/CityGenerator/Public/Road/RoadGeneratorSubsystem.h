@@ -206,10 +206,11 @@ protected:
 public:
 	/**
 	 * 对外接口，需要在交叉路口生成之后调用，生成道路构建信息具体功能包括：
-	 * 1.从SplineSegmentsInfo中获取样条信息并于十字路口的内容计算相交，获得**连续的Segments**作为道路基础信息
-	 * 2.获取十字路口的端点，判断端点位于哪个Segment、将其作为附加信息与连续Segments封装到FConnectionInsertInfo结构体
-	 * 3.生成道路Actor，配置基础信息并将FConnectionInsertInfo结构体发送给道路Actor挂载的URoadMeshGenerator
-	 * 4.调用道路生成
+	 * 1. 从SplineSegmentsInfo中获取样条信息并于十字路口的内容计算相交，获得**连续的Segments**作为道路基础信息
+	 * 2. 获取十字路口的端点，判断端点位于哪个Segment、将其作为附加信息与连续Segments封装到FConnectionInsertInfo结构体
+	 * 3. 生成道路Actor，配置基础信息并将FConnectionInsertInfo结构体发送给道路Actor挂载的URoadMeshGenerator
+	 * 4. 向路网有向图中添加节点和边
+	 * 5，调用道路生成
 	 */
 	UFUNCTION(BlueprintCallable)
 	void GenerateRoads();
@@ -246,33 +247,61 @@ protected:
 #pragma region GenerateBlock
 
 protected:
+	/**
+	 * Debug函数，为Actor添加TextRenderComponent用于显示给定Debug信息
+	 * @param TargetActor 添加目标Actor
+	 * @param TextColor TextRender颜色
+	 * @param Text TextRender显示文字
+	 */
 	void AddDebugTextRender(AActor* TargetActor, const FColor& TextColor, const FString& Text);
 
 	//EidtorSubsystem启动顺序靠前，不能直接成员类
 	UPROPERTY()
 	URoadGraph* RoadGraph = nullptr;
 
+	/**
+	 * 道路全局ID-道路Generator表
+	 */
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<URoadMeshGenerator>> IDToRoadGenerator;
 
+	/**
+	 * 交汇路口全局ID-交汇路口Generator表
+	 */
 	UPROPERTY()
 	TMap<int32, TWeakObjectPtr<UIntersectionMeshGenerator>> IDToIntersectionGenerator;
 
+	/**
+	 * 街区全局ID-街区Generator表
+	 */
 	UPROPERTY()
-	TMap<int32,TWeakObjectPtr<UBlockMeshGenerator>> IDToBlockGenerator;
-
-public:
-	UFUNCTION(BlueprintCallable)
-	void PrintGraphConnection();
-
-	UFUNCTION(BlueprintCallable)
-	void GenerateCityBlock();
+	TMap<int32, TWeakObjectPtr<UBlockMeshGenerator>> IDToBlockGenerator;
 
 	/**
 	 * 删除外轮廓，需要ComponentOwner位置信息
 	 * @param OutBlockLoops 原地修改环、面信息
 	 */
 	void RemoveInvalidLoopInline(TArray<FBlockLinkInfo>& OutBlockLoops);
+
+public:
+	/**
+	 * 对外接口，需要在交汇路口和道路生成之后调用，生成由道路和交汇路口围成的城区几何体具体功能包括：
+	 * 1. 从图中获取环/插入面的信息，提供数据提取依据
+	 * 2. 从URoadMeshGenerator中提取道路边线信息、从UIntersectionMeshGenerator中提取路口过渡段信息
+	 * 3. 生成街区Actor，配置基础信息并将上面提取到的新信息发送给UBlockMeshGenerator
+	 * 4. 调用街区生成
+	 */
+	UFUNCTION(BlueprintCallable)
+	void GenerateCityBlock();
+
+
+	/**
+	 * Debug函数，用于打印路网邻接表
+	 */
+	UFUNCTION(BlueprintCallable)
+	void PrintGraphConnection();
+
+protected:
 #pragma endregion GenerateBlock
 };
 

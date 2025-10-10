@@ -46,10 +46,20 @@ public:
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
 
 
+	/**
+	 * 获取道路给定朝向左侧边界的点
+	 * @param bForwardOrderDir 朝向是否和道路构建方向一致，配合GetConnectionOrderOfIntersection()使用
+	 * @return 道路左边界点数组
+	 */
 	[[nodiscard]] TArray<FVector> GetRoadEdgePoints(bool bForwardOrderDir = true);
 
 	[[nodiscard]] TArray<FVector> GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true);
 
+	/**
+	 * 获取道路构建点信息，用于确定道路连接的Intersection和其构建顺序，后续可能合并到GetRoadEdgePoints
+	 * @param OutLocFromIndex 返回道路构建时起始Intersection
+	 * @param OutLocEndIndex 返回道路构建时终止Intersection
+	 */
 	void GetConnectionOrderOfIntersection(int32& OutLocFromIndex, int32& OutLocEndIndex) const;
 
 protected:
@@ -71,8 +81,17 @@ protected:
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	FLaneMeshInfo RoadInfo{500.0f};
 
+	/**
+	 * 道路Comp全局ID
+	 */
 	static int32 RoadGlobalIndex;
 
+	/**
+	 * 道路构建时起始的交汇路口全局ID，用于指示道路方向
+	 */
 	int32 StartToIntersectionIndex = INT32_ERROR;
+	/**
+	 * 道路构建时终止的交汇路口全局ID，用于指示道路方向
+	 */
 	int32 EndToIntersectionIndex = INT32_ERROR;
 };

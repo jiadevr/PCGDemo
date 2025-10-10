@@ -28,7 +28,13 @@ public:
 	virtual bool GenerateMesh() override;
 
 protected:
+	/**
+	 * Block生成挤出截面
+	 */
 	TArray<FVector2D> SweepPath;
 	
+	/**
+	 * BlockComp全局ID
+	 */
 	static int32 BlockGlobalIndex;
 };

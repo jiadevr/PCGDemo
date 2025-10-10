@@ -59,11 +59,18 @@ public:
 	 */
 	TArray<FVector> GetTransitionalPoints(int32 EntryIndex, bool bOpenInterval = true);
 
+	/**
+	 * Debug函数，配合TargetEntryIndex使用，用于在街区生成时绘制对应组的过渡点进行Debug，
+	 * 根据设计当以TargetEntryIndex对应衔接点朝向交汇点时，显示点应当在面向方向左侧
+	 */
 	UFUNCTION(CallInEditor)
 	void DrawTransitionalPoints();
 
+	/**
+	 * Debug变量，配合DrawTransitionalPoints使用，对应需要测试的RoadEntryIndex
+	 */
 	UPROPERTY(EditInstanceOnly)
-	int32 TargetEntryIndex=0;
+	int32 TargetEntryIndex = 0;
 
 protected:
 	/**
@@ -74,6 +81,9 @@ protected:
 
 	TArray<FVector2D> ExtrudeShape;
 
+	/**
+	 * 两个路口衔接点直接的过渡段细分数目
+	 */
 	int32 TransitionalSubdivisionNum = 10;
 	/**
 	 * 计算模拟Spline的Tangent值，对于每个端点都需要计算一次
@@ -83,6 +93,9 @@ protected:
 	 */
 	FVector2D CalTransitionalTangentOnEdge(const FVector2D& Intersection, const FVector2D& EdgePoint);
 
+	/**
+	 * 当前交汇路口占据的空间位置，用于二叉树查找
+	 */
 	FBox2D OccupiedBox;
 	/**
 	 * 包含信息见结构体RoadSegmentStruct.h
@@ -90,7 +103,13 @@ protected:
 	UPROPERTY(BlueprintReadOnly, VisibleInstanceOnly)
 	TArray<FIntersectionSegment> IntersectionsData;
 
+	/**
+	 * 回报给道路构建系统的衔接点，使用Map保存会导致值无序
+	 */
 	TMultiMap<TWeakObjectPtr<USplineComponent>, FIntersectionSegment> ConnectionLocations;
 
+	/**
+	 * 交汇路口全局ID
+	 */
 	static int32 IntersectionGlobalIndex;
 };

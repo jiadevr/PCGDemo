@@ -39,6 +39,12 @@ public:
 	static bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
 						   TArray<FVector2D>& IntersectionsIn2DSpace);
 
+	/**
+	 * 以给定中心为原点**顺时针**排序给定点数组
+	 * 使用Atan2实现，修改值域范围为[0,2pi]，世界X轴正方向为0(2pi)，Y轴正方向为正旋转方向(pi/2)
+	 * @param Center 
+	 * @param ArrayToSort 
+	 */
 	static void SortPointClockwise(const FVector2D& Center,TArray<FVector2D>& ArrayToSort);
 
 	/**
