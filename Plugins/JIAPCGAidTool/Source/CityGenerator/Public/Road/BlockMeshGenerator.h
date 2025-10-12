@@ -31,4 +31,6 @@ protected:
 	TArray<FVector2D> SweepPath;
 	
 	static int32 BlockGlobalIndex;
+
+	TArray<UMaterialInterface*> Materials;
 };
