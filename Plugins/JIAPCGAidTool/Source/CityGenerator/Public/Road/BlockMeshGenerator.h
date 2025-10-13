@@ -37,4 +37,6 @@ protected:
 	 * BlockComp全局ID
 	 */
 	static int32 BlockGlobalIndex;
+
+	TArray<UMaterialInterface*> Materials;
 };

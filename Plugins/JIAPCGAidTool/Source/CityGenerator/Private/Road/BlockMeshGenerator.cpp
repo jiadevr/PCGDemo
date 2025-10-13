@@ -7,6 +7,9 @@
 #include "Components/DynamicMeshComponent.h"
 #include "GeometryScript/MeshNormalsFunctions.h"
 #include "GeometryScript/MeshPrimitiveFunctions.h"
+#include "GeometryScript/MeshSelectionFunctions.h"
+#include "GeometryScript/MeshModelingFunctions.h"
+#include "GeometryScript/MeshMaterialFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 
 int32 UBlockMeshGenerator::BlockGlobalIndex = -1;
@@ -58,9 +61,8 @@ bool UBlockMeshGenerator::GenerateMesh()
 				TEXT("[ERROR]%s Create Block Failed,Spline Data Is Empty"), *Owner->GetActorLabel()));
 		return false;
 	}
-	
-	//临时占位
-	TArray<FVector2D> ExtrudeShape =SweepPath;
+
+	TArray<FVector2D> ExtrudeShape = SweepPath;
 	if (ExtrudeShape.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
@@ -69,14 +71,37 @@ bool UBlockMeshGenerator::GenerateMesh()
 		return false;
 	}
 
+	UDynamicMesh* MeshPtr = MeshComponent->GetDynamicMesh();
 	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
 	FTransform ExtrudeMeshTrans = FTransform::Identity;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSimpleExtrudePolygon(
-		MeshComponent->GetDynamicMesh(), GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, 30.0f);
-	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshComponent->GetDynamicMesh());
+		MeshPtr, GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, 30.0f);
+
+	FGeometryScriptMeshSelection UpFaceSelection;
+	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(MeshPtr, UpFaceSelection);
+	FGeometryScriptMeshInsetOutsetFacesOptions InsetOptions;
+	InsetOptions.Distance = 400.0f;
+	InsetOptions.Softness = 100.0f;
+	FGeometryScriptMeshEditPolygroupOptions SplitPolyGroupOptions;
+	SplitPolyGroupOptions.GroupMode = EGeometryScriptMeshEditPolygroupMode::SetConstant;
+	SplitPolyGroupOptions.ConstantGroup = 1;
+	InsetOptions.GroupOptions = SplitPolyGroupOptions;
+	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshInsetOutsetFaces(MeshPtr, InsetOptions, UpFaceSelection);
+	UGeometryScriptLibrary_MeshMaterialFunctions::EnableMaterialIDs(MeshPtr);
+	FGeometryScriptGroupLayer GroupLayer;
+	bool bIsValidGroupID = false;
+	UGeometryScriptLibrary_MeshMaterialFunctions::SetPolygroupMaterialID(MeshPtr, GroupLayer, 1, 1, bIsValidGroupID);
+	if (bIsValidGroupID)
+	{
+		MeshComponent->ConfigureMaterialSet(Materials);
+		MeshComponent->SetColorOverrideMode(EDynamicMeshComponentColorOverrideMode::Polygroups);
+	}
+
+
+	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshPtr);
 	FGeometryScriptSplitNormalsOptions SplitOptions;
 	FGeometryScriptCalculateNormalsOptions CalculateOptions;
-	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
-																	 CalculateOptions);
+	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshPtr, SplitOptions,
+	                                                                 CalculateOptions);
 	return true;
 }
