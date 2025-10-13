@@ -23,7 +23,8 @@
 /*static TAutoConsoleVariable<float> PolyLineSubdivisionDis(
 	TEXT("SplineToPolySampleDis"), 50.0f,TEXT("Sample Distance Convert Spline To PolyLine"), ECVF_Default);*/
 static TAutoConsoleVariable<bool> AddTextRender(
-	TEXT("AddTextRenderToActor"), true,TEXT("Add TextRenderComponent To Display GraphIndex"));
+	TEXT("AddTextRenderToActor"), false,TEXT("Add TextRenderComponent To Display GraphIndex"));
+static TAutoConsoleVariable<bool> bEnableVisualDebug(TEXT("bEnableVisualDebug"), false, TEXT("Enable Graphic Debugging Shape,Include Point,Box,Shpere etal"));
 
 
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
