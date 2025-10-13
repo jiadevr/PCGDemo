@@ -77,13 +77,21 @@ bool UBlockMeshGenerator::GenerateMesh()
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSimpleExtrudePolygon(
 		MeshPtr, GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, 30.0f);
 
+
+	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshPtr);
+	FGeometryScriptSplitNormalsOptions SplitOptions;
+	FGeometryScriptCalculateNormalsOptions CalculateOptions;
+	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshPtr, SplitOptions,
+	                                                                 CalculateOptions);
+
 	FGeometryScriptMeshSelection UpFaceSelection;
 	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(MeshPtr, UpFaceSelection);
 	FGeometryScriptMeshInsetOutsetFacesOptions InsetOptions;
 	InsetOptions.Distance = 400.0f;
 	InsetOptions.Softness = 100.0f;
+	InsetOptions.AreaMode = EGeometryScriptPolyOperationArea::EntireSelection;
 	FGeometryScriptMeshEditPolygroupOptions SplitPolyGroupOptions;
-	SplitPolyGroupOptions.GroupMode = EGeometryScriptMeshEditPolygroupMode::SetConstant;
+	SplitPolyGroupOptions.GroupMode = EGeometryScriptMeshEditPolygroupMode::AutoGenerateNew;
 	SplitPolyGroupOptions.ConstantGroup = 1;
 	InsetOptions.GroupOptions = SplitPolyGroupOptions;
 	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshInsetOutsetFaces(MeshPtr, InsetOptions, UpFaceSelection);
@@ -93,15 +101,9 @@ bool UBlockMeshGenerator::GenerateMesh()
 	UGeometryScriptLibrary_MeshMaterialFunctions::SetPolygroupMaterialID(MeshPtr, GroupLayer, 1, 1, bIsValidGroupID);
 	if (bIsValidGroupID)
 	{
-		MeshComponent->ConfigureMaterialSet(Materials);
 		MeshComponent->SetColorOverrideMode(EDynamicMeshComponentColorOverrideMode::Polygroups);
+		MeshComponent->ConfigureMaterialSet(Materials);
 	}
 
-
-	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshPtr);
-	FGeometryScriptSplitNormalsOptions SplitOptions;
-	FGeometryScriptCalculateNormalsOptions CalculateOptions;
-	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshPtr, SplitOptions,
-	                                                                 CalculateOptions);
 	return true;
 }
