@@ -181,7 +181,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	{
 		//IntersectionsData这个值有序，在Subsystem中经过了顺时针排序
 		const FVector2D CurrentSegmentEndPoint2D(IntersectionsData[i].IntersectionEndPointWS);
-		if (bShowDebug)
+		if (bDrawVisualDebug)
 		{
 			//中心点显示流入为绿色，流出为橙色
 			DrawDebugSphere(GetWorld(), IntersectionsData[i].IntersectionEndPointWS, 20.0f, 8,
@@ -199,7 +199,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		RoadEdgePoints.Emplace(RightStart);
 		FVector2D RightEnd = RightStart + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(RightEnd);
-		if (bShowDebug)
+		if (bDrawVisualDebug)
 		{
 			//右侧红线
 			DrawDebugDirectionalArrow(GetWorld(), FVector(RightStart, 0.0), FVector(RightEnd, 0.0), 100.0f, FColor::Red,
@@ -211,7 +211,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 		RoadEdgePoints.Emplace(LeftStart);
 		FVector2D LeftEnd = LeftStart + VectorToCenter * SegmentScalar;
 		RoadEdgePoints.Emplace(LeftEnd);
-		if (bShowDebug)
+		if (bDrawVisualDebug)
 		{
 			//左侧蓝线
 			DrawDebugDirectionalArrow(GetWorld(), FVector(LeftStart, 0.0), FVector(LeftEnd, 0.0), 100.0f, FColor::Blue,
@@ -283,7 +283,7 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			                                              EdgeIntersectionWS))
 			{
 				ResultIndex = EdgeIntersections.Emplace(EdgeIntersectionWS);
-				if (bShowDebug)
+				if (bDrawVisualDebug)
 				{
 					DrawDebugSphere(GetWorld(), FVector(EdgeIntersectionWS, 0.0), 20.0f, 8,
 					                FColor::Cyan, true, -1, 0,
@@ -341,10 +341,13 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 	}
 	for (int i = 0; i < IntersectionConstructionPoints.Num(); ++i)
 	{
-		uint8 ColorGreenDepth = i * 255 / IntersectionConstructionPoints.Num();
-		DrawDebugSphere(GetWorld(), FVector(IntersectionConstructionPoints[i], 0.0), 20.0f, 8,
-		                FColor(0, 0, ColorGreenDepth), true, -1, 0,
-		                5);
+		if (bDrawVisualDebug)
+		{
+			uint8 ColorGreenDepth = i * 255 / IntersectionConstructionPoints.Num();
+			DrawDebugSphere(GetWorld(), FVector(IntersectionConstructionPoints[i], 0.0), 20.0f, 8,
+			                FColor(0, 0, ColorGreenDepth), true, -1, 0,
+			                5);
+		}
 		//世界空间转局部空间
 		IntersectionConstructionPoints[i] = IntersectionConstructionPoints[i] - CenterLocation;
 	}

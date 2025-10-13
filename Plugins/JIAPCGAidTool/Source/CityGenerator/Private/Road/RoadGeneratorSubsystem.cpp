@@ -24,7 +24,9 @@
 	TEXT("SplineToPolySampleDis"), 50.0f,TEXT("Sample Distance Convert Spline To PolyLine"), ECVF_Default);*/
 static TAutoConsoleVariable<bool> AddTextRender(
 	TEXT("AddTextRenderToActor"), false,TEXT("Add TextRenderComponent To Display GraphIndex"));
-static TAutoConsoleVariable<bool> bEnableVisualDebug(TEXT("bEnableVisualDebug"), false, TEXT("Enable Graphic Debugging Shape,Include Point,Box,Shpere etal"));
+static TAutoConsoleVariable<bool> bEnableVisualDebug(
+	TEXT("bEnableVisualDebug"), false, TEXT("Enable Graphic Debugging Shape,Include Point,Box,Sphere etal"),
+	ECVF_Default);
 
 
 void URoadGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -143,12 +145,15 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 		//切割交点分段
 		if (TearIntersectionToSegments(IntersectionResults[i], IntersectionBuildData))
 		{
-			for (int32 k = 0; k < IntersectionBuildData.Num(); ++k)
+			if (bEnableVisualDebug.GetValueOnGameThread())
 			{
-				FColor DebugColor = FColor((k + 1.0) / IntersectionBuildData.Num() * 255, 0, 0);
-				DrawDebugSphere(UEditorComponentUtilities::GetEditorContext()->GetWorld(),
-				                IntersectionBuildData[k].IntersectionEndPointWS, 100.0, 8, DebugColor, true, -1, 0,
-				                10.0f);
+				for (int32 k = 0; k < IntersectionBuildData.Num(); ++k)
+				{
+					FColor DebugColor = FColor((k + 1.0) / IntersectionBuildData.Num() * 255, 0, 0);
+					DrawDebugSphere(UEditorComponentUtilities::GetEditorContext()->GetWorld(),
+					                IntersectionBuildData[k].IntersectionEndPointWS, 100.0, 8, DebugColor, true, -1, 0,
+					                10.0f);
+				}
 			}
 			//生成交点对象
 			FTransform ActorTransform = FTransform::Identity;
@@ -196,6 +201,7 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 		{
 			continue;
 		}
+		IDGeneratorPair.Value->SetDrawVisualDebug(bEnableVisualDebug.GetValueOnGameThread());
 		IDGeneratorPair.Value->GenerateMesh();
 	}
 	bIntersectionsGenerated = true;
@@ -636,9 +642,12 @@ void URoadGeneratorSubsystem::GenerateRoads()
 			//部分路口外部无衔接道路
 			if (PotentialConnection.IsEmpty())
 			{
-				DrawDebugBox(UEditorComponentUtilities::GetEditorContext()->GetWorld(),
-				             IntersectionSegment.IntersectionEndPointWS, FVector(10.0f), FColor::Red, true, -1, 0,
-				             5.0f);
+				if (bEnableVisualDebug.GetValueOnGameThread())
+				{
+					DrawDebugBox(UEditorComponentUtilities::GetEditorContext()->GetWorld(),
+					             IntersectionSegment.IntersectionEndPointWS, FVector(10.0f), FColor::Red, true, -1, 0,
+					             5.0f);
+				}
 				continue;
 			}
 			//有多个可能性，根据距离判定究竟属于哪个Segment，放到PotentialConnection[0]
@@ -814,6 +823,7 @@ void URoadGeneratorSubsystem::GenerateRoads()
 		{
 			continue;
 		}
+		IDGeneratorPair.Value->SetDrawVisualDebug(bEnableVisualDebug.GetValueOnGameThread());
 		IDGeneratorPair.Value->GenerateMesh();
 	}
 }
@@ -1135,10 +1145,13 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 			       IntersectionIndexes[j], EntryIndex);
 			TArray<FVector> TransitionalPoints = IntersectionGenerator->GetTransitionalPoints(EntryIndex);
 			SingleLoopPath.Append(TransitionalPoints);
-			for (const FVector& PathPoint : SingleLoopPath)
+			if (bEnableVisualDebug.GetValueOnGameThread())
 			{
-				DrawDebugSphere(RoadGenerator->GetWorld(), PathPoint, 100.0f, 8, DebugColor,
-				                true);
+				for (const FVector& PathPoint : SingleLoopPath)
+				{
+					DrawDebugSphere(RoadGenerator->GetWorld(), PathPoint, 100.0f, 8, DebugColor,
+					                true);
+				}
 			}
 		}
 		AllLoopPath.Emplace(SingleLoopPath);
@@ -1170,6 +1183,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		{
 			continue;
 		}
+		IDGeneratorPair.Value->SetDrawVisualDebug(bEnableVisualDebug.GetValueOnGameThread());
 		IDGeneratorPair.Value->GenerateMesh();
 	}
 }

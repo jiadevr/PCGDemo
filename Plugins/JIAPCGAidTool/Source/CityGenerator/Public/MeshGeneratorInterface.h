@@ -25,10 +25,14 @@ public:
 
 	virtual bool GenerateMesh() =0;
 
-	int32 GetGlobalIndex()const{return GlobalIndex;};
+	int32 GetGlobalIndex() const { return GlobalIndex; };
+
+	void SetDrawVisualDebug(bool bDrawDebug) { bDrawVisualDebug = bDrawDebug; };
 
 protected:
 	TWeakObjectPtr<UDynamicMeshComponent> MeshComponent;
 
-	int32 GlobalIndex=0;
+	int32 GlobalIndex = 0;
+
+	bool bDrawVisualDebug = false;
 };

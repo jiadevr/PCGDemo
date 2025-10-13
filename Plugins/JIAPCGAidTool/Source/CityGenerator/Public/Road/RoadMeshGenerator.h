@@ -53,6 +53,7 @@ public:
 	 */
 	[[nodiscard]] TArray<FVector> GetRoadEdgePoints(bool bForwardOrderDir = true);
 
+	UFUNCTION(BlueprintCallable)
 	[[nodiscard]] TArray<FVector> GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true);
 
 	/**
