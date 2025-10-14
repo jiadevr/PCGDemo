@@ -333,6 +333,9 @@ TArray<FVector2D> UIntersectionMeshGenerator::CreateExtrudeShape()
 			TransitionalSplinePoints[i] = SubdivisionLoc;
 		}
 		TransitionalSplinePoints.Last() = ToEdgeStartLoc;
+		/* 如果这里发生了数组越界断言可能是划分的Segment出现连续交叉，可能造成的位置有:
+		 * 1.URoadGeneratorSubsystem::ResampleSpline其中AdditionalSampleDistance值过小
+		*/
 		AllTransitionalSplinePoints[EdgeIntersectionElem.Key.Key] = TransitionalSplinePoints;
 	}
 	for (const TArray<FVector2D>& SingleTransition : AllTransitionalSplinePoints)

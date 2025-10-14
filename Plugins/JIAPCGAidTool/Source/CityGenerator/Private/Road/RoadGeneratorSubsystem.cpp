@@ -207,7 +207,8 @@ void URoadGeneratorSubsystem::GenerateIntersections()
 	bIntersectionsGenerated = true;
 }
 
-void URoadGeneratorSubsystem::VisualizeSegmentByDebugline(bool bUpdateBeforeDraw, float Thickness)
+void URoadGeneratorSubsystem::VisualizeSegmentByDebugline(bool bUpdateBeforeDraw, float Thickness,
+                                                          bool bFlushBeforeDraw)
 {
 	if (bUpdateBeforeDraw)
 	{
@@ -217,7 +218,10 @@ void URoadGeneratorSubsystem::VisualizeSegmentByDebugline(bool bUpdateBeforeDraw
 	{
 		return;
 	}
-	FlushPersistentDebugLines(UEditorComponentUtilities::GetEditorContext());
+	if (bFlushBeforeDraw)
+	{
+		FlushPersistentDebugLines(UEditorComponentUtilities::GetEditorContext());
+	}
 	for (const auto& SegmentOfSingleSpline : SplineSegmentsInfo)
 	{
 		if (!SegmentOfSingleSpline.Key.IsValid()) { continue; }
@@ -996,22 +1000,88 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 		return Results;
 	}
 	const float SegmentMaxDisThreshold = 10 * PolyLineSampleDistance;
-	const float LengthOfOriginalSpline = TargetSpline->GetSplineLength();
 	TArray<FVector> PolyLineEndPointLoc;
 	TArray<double> PolyLineLengths;
-	//曲线，该函数返回闭合样条返回段,Distance数组是到每一个端点处的长度（类似前缀和）
+	//曲线，该函数返回闭合样条返回段,Distance数组是到每一个端点处的长度（类似前缀和）,ControlPoint位置一定会有一个采样点
 	TargetSpline->ConvertSplineToPolyLineWithDistances(ESplineCoordinateSpace::World, PolyLineSampleDistance,
 	                                                   PolyLineEndPointLoc, PolyLineLengths);
-	TMap<int32, TArray<FTransform>> SegmentsToSubdivide;
+	//先处理Linear
+	TArray<int32> LinearControlPointIndexes;
+	for (int32 i = 0; i < PolyLineLengths.Num(); ++i)
+	{
+		float InputKey = TargetSpline->GetInputKeyValueAtDistanceAlongSpline(PolyLineLengths[i]);
+		if (IsIntegerInFloatFormat(InputKey))
+		{
+			int32 ControlPointIndex = static_cast<int32>(InputKey);
+			if (TargetSpline->GetSplinePointType(ControlPointIndex) == ESplinePointType::Linear && i > 0 &&
+				i < PolyLineLengths.Num() - 1)
+			{
+				LinearControlPointIndexes.Emplace(i);
+			}
+		}
+	}
+
+	//所有细分点的初始内容
 	Results.Reserve(PolyLineEndPointLoc.Num());
-	Results.Emplace(
-		TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[0], ESplineCoordinateSpace::World,
-		                                                true));
-	for (int i = 1; i < PolyLineLengths.Num(); ++i)
+	for (int i = 0; i < PolyLineLengths.Num(); ++i)
 	{
 		Results.Emplace(
 			TargetSpline->GetTransformAtDistanceAlongSpline(PolyLineLengths[i], ESplineCoordinateSpace::World,
 			                                                true));
+	}
+
+	TMap<int32, TArray<FTransform>> InterplatePointsOnControlPoints;
+	TMap<int32, TArray<double>> InterplateLengthOnSpline;
+	if (!LinearControlPointIndexes.IsEmpty())
+	{
+		for (int32& ControlPointIndex : LinearControlPointIndexes)
+		{
+			//值过小会因为被四叉树判定为相交，生成交汇路口时报错
+			const float AdditionalSampleDistance = 4 * PolyLineSampleDistance;
+			//判断和前边点的距离
+			float FrontNeighbourDis = PolyLineLengths[ControlPointIndex] - PolyLineLengths[ControlPointIndex - 1];
+			FTransform LastTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+				PolyLineLengths[ControlPointIndex - 1], ESplineCoordinateSpace::World,
+				true);
+			
+			if (FrontNeighbourDis >AdditionalSampleDistance)
+			{
+				LastTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+					PolyLineLengths[ControlPointIndex] - AdditionalSampleDistance,
+					ESplineCoordinateSpace::World,
+					true);
+				InterplatePointsOnControlPoints.Emplace(ControlPointIndex - 1).Emplace(LastTransform);
+				InterplateLengthOnSpline.Emplace(ControlPointIndex - 1).Emplace(
+					PolyLineLengths[ControlPointIndex] - AdditionalSampleDistance);
+			}
+
+			float NextNeighbourDis = PolyLineLengths[ControlPointIndex + 1] - PolyLineLengths[ControlPointIndex];
+			FTransform NextTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+				PolyLineLengths[ControlPointIndex + 1], ESplineCoordinateSpace::World,
+				true);
+			if (NextNeighbourDis > AdditionalSampleDistance)
+			{
+				NextTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
+					PolyLineLengths[ControlPointIndex] + AdditionalSampleDistance,
+					ESplineCoordinateSpace::World,
+					true);
+				InterplatePointsOnControlPoints.Emplace(ControlPointIndex).Emplace(NextTransform);
+				InterplateLengthOnSpline.Emplace(ControlPointIndex).Emplace(
+					PolyLineLengths[ControlPointIndex] + AdditionalSampleDistance);
+			}
+			//FQuat不要使用(A+B)/2计算值不对
+			FQuat AverageRotator = FQuat::Slerp(LastTransform.GetRotation(), NextTransform.GetRotation(), 0.5);
+			Results[ControlPointIndex].SetRotation(AverageRotator);
+			FVector RotDir = AverageRotator.Rotator().Vector();
+		}
+		InsertElementsAtIndex(Results, InterplatePointsOnControlPoints);
+		InsertElementsAtIndex(PolyLineLengths, InterplateLengthOnSpline);
+	}
+
+	TMap<int32, TArray<FTransform>> SegmentsToSubdivide;
+	//检测上面函数返回的分段长度是否符合设定要求，如果不符合则记录位置进一步处理
+	for (int i = 1; i < Results.Num(); ++i)
+	{
 		if (PolyLineLengths[i] - PolyLineLengths[i - 1] > SegmentMaxDisThreshold)
 		{
 			//以该点为起点的位置需要插入元素
@@ -1022,7 +1092,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 	{
 		return Results;
 	}
-	//如果需要处理
+	//如果需要处理，在记录的位置增加细分
 	for (TPair<int32, TArray<FTransform>>& TargetSegment : SegmentsToSubdivide)
 	{
 		const int32 SegmentIndex = TargetSegment.Key;
@@ -1038,9 +1108,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 				TargetSpline->GetTransformAtDistanceAlongSpline(DisToSubdivisionPoint, ESplineCoordinateSpace::World));
 		}
 	}
-	//FTransform为非POD对象，不能直接内存拷贝，下面这个函数意义不大
-	/*TArray<TArray<uint32>> ContinuousIndexSeries = GetContinuousIndexSeries(
-		BreakPoints, static_cast<uint32>(PolyLineLengths.Num() - 1));*/
+	//FTransform为非POD对象，不能直接内存拷贝
 	InsertElementsAtIndex(Results, SegmentsToSubdivide);
 	return Results;
 }
@@ -1068,6 +1136,11 @@ void URoadGeneratorSubsystem::PrintGraphConnection()
 	{
 		RoadGraph->PrintConnectionToLog();
 	}
+}
+
+bool URoadGeneratorSubsystem::IsIntegerInFloatFormat(float InFloatValue)
+{
+	return FMath::IsNearlyEqual(InFloatValue, FMath::RoundToFloat(InFloatValue));
 }
 
 void URoadGeneratorSubsystem::GenerateCityBlock()

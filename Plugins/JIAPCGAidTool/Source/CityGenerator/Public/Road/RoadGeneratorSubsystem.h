@@ -117,7 +117,7 @@ public:
 	 * @param Thickness Debug绘制宽度
 	 */
 	UFUNCTION(BlueprintCallable)
-	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = false, float Thickness = 30.0f);
+	void VisualizeSegmentByDebugline(bool bUpdateBeforeDraw = false, float Thickness = 30.0f,bool bFlushBeforeDraw=false);
 
 	/**
 	 * 模板函数，用于ResampleSpline函数中长直线段细分数据加入，以非POD（不能使用FMemoryCopy）为处理对象
@@ -303,8 +303,17 @@ public:
 
 protected:
 #pragma endregion GenerateBlock
+
+protected:
+	bool IsIntegerInFloatFormat(float InFloatValue);
 };
 
+/**
+ * 根据InsertMap中配置的Index和数组，在给定Index **之后** 按照顺序插入数组元素，此函数用于一次性完成整段数组元素插入，提升多处插入的性能
+ * @tparam T 元素类型，支持非POD对象（Transform等）
+ * @param TargetArray 待插入数组，原位插入
+ * @param InsertMap 插入元素表，其中MapKey为待插入位置，将插入到该元素**之后**，MapValue为待插入元素值
+ */
 template <typename T>
 void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, const TMap<int32, TArray<T>>& InsertMap)
 {
@@ -351,77 +360,4 @@ void URoadGeneratorSubsystem::InsertElementsAtIndex(TArray<T>& TargetArray, cons
 	TargetArray = MoveTemp(TempArray);
 }
 
-#pragma region DOF
-/*
-/**
- * 对给定样条每一段进行重采样并整合输出，以获得Sweep所需的路径点。
- * 当存在Shrink时对开头、结尾、终点进行分别处理，整合算法为起点+开头开区间+中段左闭右开区间+(n-1)+结尾双开区间+终点;Linear需要每一段都为闭区间
- * @param TargetSpline 目标样条线
- * @param OutResampledTransform 输出，重采样获得的Transform，非附加方式，传入后会清空再填入数据
- * @param MaxResampleDistance 最大采样距离
- * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
- * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
- * @return 
- #1#
-bool ResampleSamplePoint(const USplineComponent* TargetSpline, TArray<FTransform>& OutResampledTransform,
-						 float MaxResampleDistance, float StartShrink = 0.0,
-						 float EndShrink = 0.0);
-*/
-/*
-/**
- * 根据样条生成扫描DynamicMeshActor,挂载DynamicMeshComp和RoadDataComp
- * @param TargetSpline 目标样条线
- * @param LaneTypeEnum 车道种类枚举值，目前在本类构造中初始化
- * @param StartShrink 起始点偏移值（>=0）,生成Mesh由原本0起点偏移值给定长度
- * @param EndShrink 终点偏移值（>=0）,生成Mesh由原本Last终点偏移值给定长度
- #1#
-UFUNCTION(BlueprintCallable)
-void GenerateSingleRoadBySweep(USplineComponent* TargetSpline,
-							   const ELaneType LaneTypeEnum = ELaneType::ARTERIALROADS, float StartShrink = 0.0f,
-							   float EndShrink = 0.0f);
- */
 
-/*
-/**
- * 当具有ShrinkStart、ShrinkEnd时使用该函数，传入使用的下一个节点，返回插值结果，使用TArray不是直接设置点，为了更安全使用返回值形式
- * @param TargetSpline 目标样条线
- * @param TargetLength ShinkValue，即ShrinkStartPoint到Index0的距离和ShrinkEndPoint到IndexLast的距离
- * @param NeighborIndex 与ShrinkPoint相邻的最近有效点序号，对于ShrinkStartPoint应该传入下一个点，对于ShrinkEndPoint应该传入上一点
- * @param bIsBackTraverse 区分ShrinkStart和ShrinkEnd，ShrinkStart是正向遍历，此处应当传入false；ShrinkEnd是反向遍历，此处应当传入true
- * @param MaxResampleDistance 最大采样距离，后续还会有调整
- * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
- * @return 返回该Segment插值之后的Transform数组
- #1#
-TArray<FTransform> GetSubdivisionBetweenGivenAndControlPoint(const USplineComponent* TargetSpline,
-															 float TargetLength, int32 NeighborIndex,
-															 bool bIsBackTraverse, float MaxResampleDistance,
-															 bool bIsClosedInterval);
-*/
-
-/*
-/**
- * 当仅有两个控制点时生成直线或曲线细分点，如果为闭合样条则获取往复点
- * @param TargetSpline 目标样条线
- * @param StartShrink 起始点偏移量（>=0）
- * @param EndShrink 终点偏移量（>=0）
- * @param MaxResampleDistance 最大采样距离
- * @param bIsClosedInterval 是否需要闭合区间，当选择闭合区间时返回带有两端点[ShrinkStart,NextPoint],[PreviousPoint,ShrinkEnd]
- * @param bIsLocalSpace 是否返回局部空间坐标
- * @return 返回该Segment插值之后的Transform数组
- #1#
-TArray<FTransform> GetSubdivisionOnSingleSegment(const USplineComponent* TargetSpline, float StartShrink,
-												 float EndShrink, float MaxResampleDistance,
-												 bool bIsClosedInterval, bool bIsLocalSpace);
-*/
-/*
-/**
- * 获得Spline给定Segment的长度，支持CloseLoop
- * @param TargetSpline 指定Spine
- * @param SegmentIndex 需要获取的Segment序号
- * @return 该Segment长度，当SegmentIndex不合法是返回0
- #1#
-float GetSplineSegmentLength(const USplineComponent* TargetSpline, int32 SegmentIndex);
-*/
-
-
-#pragma endregion  DOF
