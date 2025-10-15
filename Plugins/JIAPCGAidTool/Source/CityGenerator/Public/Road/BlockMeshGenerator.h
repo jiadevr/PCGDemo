@@ -38,5 +38,10 @@ protected:
 	 */
 	static int32 BlockGlobalIndex;
 
+	UPROPERTY(EditAnywhere)
 	TArray<UMaterialInterface*> Materials;
+
+	void RefreshMatsOnDynamicMeshComp();
+
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 };

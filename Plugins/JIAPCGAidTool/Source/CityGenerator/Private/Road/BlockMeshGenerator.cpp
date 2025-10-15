@@ -107,3 +107,26 @@ bool UBlockMeshGenerator::GenerateMesh()
 
 	return true;
 }
+
+void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
+{
+	if (!Materials.IsEmpty())
+	{
+		MeshComponent->ConfigureMaterialSet(Materials);
+	}
+}
+#if WITH_EDITOR
+void UBlockMeshGenerator::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	if (PropertyChangedEvent.Property)
+	{
+		FName PropertyName = PropertyChangedEvent.Property->GetFName();
+
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(UBlockMeshGenerator, Materials))
+		{
+			RefreshMatsOnDynamicMeshComp();
+		}
+	}
+}
+#endif
