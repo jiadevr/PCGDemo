@@ -91,20 +91,23 @@ bool UBlockMeshGenerator::GenerateMesh()
 	InsetOptions.Softness = 100.0f;
 	InsetOptions.AreaMode = EGeometryScriptPolyOperationArea::EntireSelection;
 	FGeometryScriptMeshEditPolygroupOptions SplitPolyGroupOptions;
+	//设置的Group对象是挤压的那个面，也就是原选择面，而不是内部挤压新生成的周边面
 	SplitPolyGroupOptions.GroupMode = EGeometryScriptMeshEditPolygroupMode::AutoGenerateNew;
 	SplitPolyGroupOptions.ConstantGroup = 1;
 	InsetOptions.GroupOptions = SplitPolyGroupOptions;
 	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshInsetOutsetFaces(MeshPtr, InsetOptions, UpFaceSelection);
 	UGeometryScriptLibrary_MeshMaterialFunctions::EnableMaterialIDs(MeshPtr);
-	FGeometryScriptGroupLayer GroupLayer;
-	bool bIsValidGroupID = false;
-	UGeometryScriptLibrary_MeshMaterialFunctions::SetPolygroupMaterialID(MeshPtr, GroupLayer, 1, 1, bIsValidGroupID);
-	if (bIsValidGroupID)
-	{
-		MeshComponent->SetColorOverrideMode(EDynamicMeshComponentColorOverrideMode::Polygroups);
-		MeshComponent->ConfigureMaterialSet(Materials);
-	}
-
+	//先给所有顶面都设置
+	FGeometryScriptMeshSelection NewUpFaceSelection;
+	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(MeshPtr, NewUpFaceSelection);
+	UGeometryScriptLibrary_MeshMaterialFunctions::SetMaterialIDForMeshSelection(MeshPtr, NewUpFaceSelection, 2);
+	//把内部挤压的单独拿出来设置
+	UGeometryScriptLibrary_MeshMaterialFunctions::SetMaterialIDForMeshSelection(MeshPtr, UpFaceSelection, 1);
+	//其他不可见的面
+	FGeometryScriptMeshSelection OtherFaceSelection;
+	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(
+		MeshPtr, OtherFaceSelection, FVector::UpVector, 1, EGeometryScriptMeshSelectionType::Triangles, true);
+	UGeometryScriptLibrary_MeshMaterialFunctions::SetMaterialIDForMeshSelection(MeshPtr, OtherFaceSelection, 0);
 	return true;
 }
 
