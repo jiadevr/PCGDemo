@@ -112,4 +112,19 @@ protected:
 	 * 交汇路口全局ID
 	 */
 	static int32 IntersectionGlobalIndex;
+
+
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+
+	void RefreshMatsOnDynamicMeshComp();
+
+	UPROPERTY()
+	UMaterialInterface* Material;
+
+	void InitialMaterials();
+
+
+	const FString MaterialPath{"/Game/Road/Material/MI/M_Asphalt_Master_Inst_Intersection"};
+
+	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/MI_Intersection"};
 };

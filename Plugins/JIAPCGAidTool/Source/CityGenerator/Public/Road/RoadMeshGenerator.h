@@ -95,4 +95,17 @@ protected:
 	 * 道路构建时终止的交汇路口全局ID，用于指示道路方向
 	 */
 	int32 EndToIntersectionIndex = INT32_ERROR;
+
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+
+	void RefreshMatsOnDynamicMeshComp();
+
+	UPROPERTY(EditAnywhere)
+	UMaterialInterface* Material;
+
+	void InitialMaterials();
+
+	const FString MaterialPath{"/Game/Road/Material/MI/MI_FreewayAsphalt_Road"};
+
+	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/MI_Road"};
 };

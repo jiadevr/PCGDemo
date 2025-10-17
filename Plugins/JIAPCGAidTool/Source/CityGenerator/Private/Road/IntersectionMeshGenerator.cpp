@@ -11,7 +11,9 @@
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Road/RoadGeometryUtilities.h"
+#include "Subsystems/EditorAssetSubsystem.h"
 
+class FAssetToolsModule;
 int32 UIntersectionMeshGenerator::IntersectionGlobalIndex = -1;
 static TAutoConsoleVariable<bool> CVarOnlyDebugPoint(
 	TEXT("RIG.OnlyDebugPoint"), false,TEXT("Only Generate Points Ignore Meshes"), ECVF_Default);
@@ -88,8 +90,11 @@ bool UIntersectionMeshGenerator::GenerateMesh()
 	FGeometryScriptCalculateNormalsOptions CalculateOptions;
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
 	                                                                 CalculateOptions);
-	/*UNotifyUtilities::ShowPopupMsgAtCorner(
-		FString::Printf(TEXT("%s Generate Intersection Finished!"), *Owner->GetActorLabel()));*/
+	if (nullptr == Material)
+	{
+		InitialMaterials();
+	}
+	RefreshMatsOnDynamicMeshComp();
 	return true;
 }
 
@@ -364,4 +369,60 @@ FVector2D UIntersectionMeshGenerator::CalTransitionalTangentOnEdge(const FVector
 	FVector2D Dir(UKismetMathLibrary::GetDirectionUnitVector(FVector(EdgePoint, 0.0), FVector(Intersection, 0.0)));
 	FVector2D Tangent = FVector2D::Distance(EdgePoint, Intersection) * 2 * Dir;
 	return Tangent;
+}
+#if WITH_EDITOR
+void UIntersectionMeshGenerator::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	if (PropertyChangedEvent.Property)
+	{
+		FName PropertyName = PropertyChangedEvent.Property->GetFName();
+
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(UIntersectionMeshGenerator, Material))
+		{
+			RefreshMatsOnDynamicMeshComp();
+		}
+	}
+}
+#endif
+
+void UIntersectionMeshGenerator::RefreshMatsOnDynamicMeshComp()
+{
+	if (Material && MeshComponent.IsValid())
+	{
+		TArray<UMaterialInterface*> Materials;
+		Materials.Emplace(Material);
+		MeshComponent->ConfigureMaterialSet(Materials);
+	}
+}
+
+void UIntersectionMeshGenerator::InitialMaterials()
+{
+	FString TargetPath;
+	UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
+	if (!AssetSubsystem)
+	{
+		return;
+	}
+	if (AssetSubsystem->DoesAssetExist(MaterialPath))
+	{
+		TargetPath = MaterialPath;
+	}
+	else
+	{
+		if (AssetSubsystem->DoesAssetExist(BackupMaterialPath))
+		{
+			TargetPath = BackupMaterialPath;
+		}
+	}
+	if (TargetPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Error, TEXT("No Valid Material"));
+		return;
+	}
+	UObject* TargetMatAsset = AssetSubsystem->LoadAsset(TargetPath);
+	if (TargetMatAsset)
+	{
+		Material = Cast<UMaterialInterface>(TargetMatAsset);
+	}
 }

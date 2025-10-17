@@ -22,9 +22,9 @@ public:
 	 * @param InSweepPath 轮廓点数组
 	 */
 	void SetSweepPath(const TArray<FVector>& InSweepPath);
-	
+
 	virtual void SetMeshComponent(class UDynamicMeshComponent* InMeshComponent) override;
-	
+
 	virtual bool GenerateMesh() override;
 
 protected:
@@ -32,16 +32,25 @@ protected:
 	 * Block生成挤出截面
 	 */
 	TArray<FVector2D> SweepPath;
-	
+
 	/**
 	 * BlockComp全局ID
 	 */
 	static int32 BlockGlobalIndex;
 
-	UPROPERTY(EditAnywhere)
-	TArray<UMaterialInterface*> Materials;
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 
 	void RefreshMatsOnDynamicMeshComp();
 
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+	UPROPERTY(EditAnywhere)
+	TArray<UMaterialInterface*> Materials;
+
+	void InitialMaterials();
+
+	const TArray<FString> MaterialsPath{
+		"/Game/Road/Material/MI/MI_FreewayConcrete_PropsWS02", "/Game/Road/Material/MI/MI_Sidewalk_Plaza_E_WS"
+	};
+	const TArray<FString> BackupMaterialsPath{
+		"/JIAPCGAidTool/CityGeneratorContent/MI_BlockCenter", "/JIAPCGAidTool/CityGeneratorContent/MI_Sidewalk"
+	};
 };

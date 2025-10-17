@@ -6,9 +6,11 @@
 #include "NotifyUtilities.h"
 #include "Components/DynamicMeshComponent.h"
 #include "Components/SplineComponent.h"
+#include "GeometryScript/MeshMaterialFunctions.h"
 #include "GeometryScript/MeshNormalsFunctions.h"
 #include "GeometryScript/MeshPrimitiveFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Subsystems/EditorAssetSubsystem.h"
 
 int32 URoadMeshGenerator::RoadGlobalIndex = -1;
 // Sets default values for this component's properties
@@ -129,6 +131,11 @@ bool URoadMeshGenerator::GenerateMesh()
 	FGeometryScriptCalculateNormalsOptions CalculateOptions;
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshComponent->GetDynamicMesh(), SplitOptions,
 	                                                                 CalculateOptions);
+	if (nullptr == Material)
+	{
+		InitialMaterials();
+	}
+	RefreshMatsOnDynamicMeshComp();
 	return true;
 }
 
@@ -209,4 +216,59 @@ void URoadMeshGenerator::ConvertPointToLocalSpace(const FTransform& InActorTrans
 		SinglePathPointTrans.SetRotation(RotatorInLocalSpace.Quaternion());
 	}
 	bIsLocalSpace = true;
+}
+
+void URoadMeshGenerator::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	if (PropertyChangedEvent.Property)
+	{
+		FName PropertyName = PropertyChangedEvent.Property->GetFName();
+
+		if (PropertyName == GET_MEMBER_NAME_CHECKED(URoadMeshGenerator, Material))
+		{
+			RefreshMatsOnDynamicMeshComp();
+		}
+	}
+}
+
+void URoadMeshGenerator::RefreshMatsOnDynamicMeshComp()
+{
+	if (nullptr != Material && MeshComponent.IsValid())
+	{
+		TArray<UMaterialInterface*> Materials;
+		Materials.Emplace(Material);
+		MeshComponent->ConfigureMaterialSet(Materials);
+	}
+}
+
+void URoadMeshGenerator::InitialMaterials()
+{
+	FString TargetPath;
+	UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
+	if (!AssetSubsystem)
+	{
+		return;
+	}
+	if (AssetSubsystem->DoesAssetExist(MaterialPath))
+	{
+		TargetPath = MaterialPath;
+	}
+	else
+	{
+		if (AssetSubsystem->DoesAssetExist(BackupMaterialPath))
+		{
+			TargetPath = BackupMaterialPath;
+		}
+	}
+	if (TargetPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Error, TEXT("No Valid Material"));
+		return;
+	}
+	UObject* TargetMatAsset = AssetSubsystem->LoadAsset(TargetPath);
+	if (TargetMatAsset)
+	{
+		Material = Cast<UMaterialInterface>(TargetMatAsset);
+	}
 }

@@ -24,9 +24,9 @@ public:
 	 * @param OutIntersection 交点（如存在）
 	 * @return SegmentA和SegmentB在Start-End范围内是否存在交点
 	 */
-	static 	bool Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
-						   const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
-						   FVector2D& OutIntersection);
+	static bool Get2DIntersection(const FVector2D& InSegmentAStart, const FVector2D& InSegmentAEnd,
+	                              const FVector2D& InSegmentBStart, const FVector2D& InSegmentBEnd,
+	                              FVector2D& OutIntersection);
 
 
 	/**
@@ -37,7 +37,7 @@ public:
 	 * @return 待测试样条A、B在样条全长内是否存在交点
 	 */
 	static bool Get2DIntersection(USplineComponent* TargetSplineA, USplineComponent* TargetSplineB,
-						   TArray<FVector2D>& IntersectionsIn2DSpace);
+	                              TArray<FVector2D>& IntersectionsIn2DSpace);
 
 	/**
 	 * 以给定中心为原点**顺时针**排序给定点数组
@@ -45,7 +45,7 @@ public:
 	 * @param Center 
 	 * @param ArrayToSort 
 	 */
-	static void SortPointClockwise(const FVector2D& Center,TArray<FVector2D>& ArrayToSort);
+	static void SortPointClockwise(const FVector2D& Center, TArray<FVector2D>& ArrayToSort);
 
 	/**
 	 * 使用Shoelace法计算有序（顺时针、逆时针）顶点围成的多边形面积
