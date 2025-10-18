@@ -185,14 +185,31 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::Local);
 	float EndAsInputKey = OwnerSpline->GetInputKeyAtDistanceAlongSpline(EndAsDist);
 	//起点到终点跨过的ControlPoints个数
-	int32 ControlPointInRange = FMath::FloorToInt(EndAsInputKey) - FMath::CeilToInt(StartAsInputKey);
+	int32 ControlPointNumInRange = FMath::FloorToInt(EndAsInputKey) - FMath::FloorToInt(StartAsInputKey);
+	Results.SetNum(2 + ControlPointNumInRange);
+	//NewControlPoint0
+	FVector FirstElemInWS = UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(),
+	                                                              bForwardOrderDir
+		                                                              ? RoadStartLocation
+		                                                              : RoadEndLocation);
+	Results[0] = FirstElemInWS;
 	//是结尾到开头连接的部分
-	if (StartAsInputKey > EndAsInputKey)
+	if (ControlPointNumInRange > 0)
 	{
+		for (int32 i = 1; i <= ControlPointNumInRange; i++)
+		{
+			int32 ResultIndex = bForwardOrderDir
+				                    ? FMath::FloorToInt(StartAsInputKey) + i
+				                    : FMath::CeilToInt(EndAsInputKey) - i;
+			Results[i] = OwnerSpline->GetLocationAtSplineInputKey(static_cast<float>(ResultIndex),
+			                                                      ESplineCoordinateSpace::World);
+		}
 	}
-	else
-	{
-	}
+	FVector LastElemInWS = UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(),
+	                                                             bForwardOrderDir
+		                                                             ? RoadEndLocation
+		                                                             : RoadStartLocation);
+	Results[ControlPointNumInRange + 1] = LastElemInWS;
 	// OwnerSpline->GetDistanceAlongSplineAtSplinePoint()
 	return Results;
 }
