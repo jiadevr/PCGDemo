@@ -170,24 +170,26 @@ TArray<FVector> URoadMeshGenerator::GetRoadEdgePoints(bool bForwardOrderDir)
 	return Results;
 }
 
-TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForwardOrderDir,
-                                                                      ECoordOffsetType OffsetType,
-                                                                      float CustomOffsetOnLeft)
+FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForwardOrderDir,
+                                                                         ECoordOffsetType OffsetType,
+                                                                         float CustomOffsetOnLeft)
 {
+	FInterpCurveVector Result;
 	TArray<FVector> Results;
 	if (!ReferenceSpline.IsValid())
 	{
-		return Results;
+		return Result;
 	}
 	USplineComponent* OwnerSpline = ReferenceSpline.Pin().Get();
 	AActor* OwnerActor = GetOwner();
-	if (OwnerActor == nullptr) { return Results; }
+	if (OwnerActor == nullptr) { return Result; }
 
 	FVector RoadStartLocation = SweepPointsTrans[0].GetLocation();
 	RoadStartLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadStartLocation);
 	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
 	float StartAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadStartLocation, ESplineCoordinateSpace::World);
 	float StartAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(StartAsDist);
+	FVector StartTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(StartAsDist, ESplineCoordinateSpace::World);
 	//处理偏移问题
 	if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
 	{
@@ -200,12 +202,15 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 		}
 		RoadStartLocation += OffsetValue * StartRightVector * -1.0;
 	}
+	FInterpCurvePoint<FVector> StartPoint(bForwardOrderDir ? 0.0f : 1.0f, RoadStartLocation, -StartTangent,
+	                                      StartTangent, CIM_CurveAuto);
 
 	FVector RoadEndLocation = SweepPointsTrans.Last().GetLocation();
 	RoadEndLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadEndLocation);
 	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
 	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::World);
 	float EndAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(EndAsDist);
+	FVector EndTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(EndAsDist, ESplineCoordinateSpace::World);
 	//处理偏移
 	if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
 	{
@@ -218,7 +223,8 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 		}
 		RoadEndLocation += OffsetValue * EndRightVector * -1.0;
 	}
-
+	FInterpCurvePoint<FVector> EndPoint(bForwardOrderDir ? 1.0f : 0.0f, RoadEndLocation, -EndTangent, EndTangent,
+	                                    CIM_CurveAuto);
 
 	//起点到终点跨过的ControlPoints个数，需要特别考虑Loop类型End<Start
 	int32 ControlPointNumInRange = FMath::FloorToInt(EndAsInputKey) - FMath::FloorToInt(StartAsInputKey);
@@ -230,10 +236,13 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 		ControlPointNumInRange = NumControlPoints - FMath::CeilToInt(StartAsInputKey) +
 			FMath::CeilToInt(EndAsInputKey);
 	}
-	Results.Reserve(2 + ControlPointNumInRange);
-	//NewControlPoint0
-	Results.Emplace(bForwardOrderDir ? RoadStartLocation : RoadEndLocation);
-	const FVector& LastElem = bForwardOrderDir ? RoadEndLocation : RoadStartLocation;
+	Result.Points.Reserve(2 + ControlPointNumInRange);
+	//Results.Reserve(2 + ControlPointNumInRange);
+	const FInterpCurvePoint<FVector>& FirstElem = bForwardOrderDir ? StartPoint : EndPoint;
+	Result.Points.Emplace(FirstElem);
+	//Results.Emplace(bForwardOrderDir ? RoadStartLocation : RoadEndLocation);
+	//const FVector& LastElem = bForwardOrderDir ? RoadEndLocation : RoadStartLocation;
+	const FInterpCurvePoint<FVector>& LastElem = bForwardOrderDir ? EndPoint : StartPoint;
 	//是结尾到开头连接的部分
 	if (ControlPointNumInRange > 0)
 	{
@@ -244,6 +253,10 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 				                    : (FMath::CeilToInt(EndAsInputKey) - i + NumControlPoints) % (NumControlPoints);
 			FVector ControlPointLocWS = OwnerSpline->GetLocationAtSplineInputKey(static_cast<float>(ResultIndex),
 				ESplineCoordinateSpace::World);
+			FVector ControlPointTangentWS = OwnerSpline->GetTangentAtSplineInputKey(static_cast<float>(ResultIndex),
+				ESplineCoordinateSpace::World);
+
+			ESplinePointType::Type PointType = OwnerSpline->GetSplinePointType(ResultIndex);
 			//对于获取边缘的情况
 			if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
 			{
@@ -256,23 +269,28 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 				}
 				ControlPointLocWS += OffsetValue * ControlPointRightVector * -1.0;
 			}
-
+			float TempTime = i / (2.0f + ControlPointNumInRange);
+			FInterpCurvePoint<FVector> MidPoint(TempTime, ControlPointLocWS, -ControlPointTangentWS,
+			                                    ControlPointTangentWS,
+			                                    ConvertSplinePointTypeToInterpCurveMode(PointType));
 			if (i == 1 || i == ControlPointNumInRange)
 			{
 				//两者均已经转化为世界坐标
 				double DistanceToNeighbour = FVector::DistSquared(ControlPointLocWS,
-				                                                  i == 1 ? Results[0] : LastElem);
+				                                                  i == 1 ? FirstElem.OutVal : LastElem.OutVal);
 				if (DistanceToNeighbour <= 10000)
 				{
 					continue;
 				}
 			}
-			Results.Emplace(ControlPointLocWS);
+			//Results.Emplace(ControlPointTangentWS);
+			Result.Points.Emplace(MidPoint);
 		}
 	}
 	//已经是世界空间了
-	Results.Emplace(LastElem);
-	return Results;
+	//Results.Emplace(LastElem);
+	Result.Points.Emplace(LastElem);
+	return Result;
 }
 
 void URoadMeshGenerator::GetConnectionOrderOfIntersection(int32& OutLocFromIndex, int32& OutLocEndIndex) const

@@ -27,6 +27,10 @@ public:
 
 	virtual bool GenerateMesh() override;
 
+	void SetInnerSplinePoints(const TArray<FInterpCurveVector>& InOrderedControlPoints);
+
+	void GenerateInnerRefSpline();
+
 protected:
 	/**
 	 * Block生成挤出截面
@@ -53,4 +57,6 @@ protected:
 	const TArray<FString> BackupMaterialsPath{
 		"/JIAPCGAidTool/CityGeneratorContent/MI_BlockCenter", "/JIAPCGAidTool/CityGeneratorContent/MI_Sidewalk"
 	};
+
+	TArray<FInterpCurveVector> ControlPointsOfAmongRoads;
 };

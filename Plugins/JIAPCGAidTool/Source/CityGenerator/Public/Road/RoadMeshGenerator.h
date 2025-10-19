@@ -61,8 +61,8 @@ public:
 	 */
 	[[nodiscard]] TArray<FVector> GetRoadEdgePoints(bool bForwardOrderDir = true);
 
-	UFUNCTION(BlueprintCallable)
-	[[nodiscard]] TArray<FVector> GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true,
+	//UFUNCTION(BlueprintCallable)
+	[[nodiscard]] FInterpCurveVector GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true,
 	                                                                ECoordOffsetType OffsetType =
 		                                                                ECoordOffsetType::ROADCENTER,
 	                                                                float CustomOffsetOnLeft = 0.0f);

@@ -118,6 +118,44 @@ bool UBlockMeshGenerator::GenerateMesh()
 	return true;
 }
 
+void UBlockMeshGenerator::SetInnerSplinePoints(
+	const TArray<FInterpCurveVector>& InOrderedControlPoints)
+{
+	FColor LineInIndividualGroup = FColor::MakeRandomSeededColor(GetGlobalIndex());
+	FColor LineBetweenGroups = FColor::MakeRandomColor();
+	FVector VerticalOffset = FVector::UpVector*50.0;
+	ControlPointsOfAmongRoads = InOrderedControlPoints;
+	TArray<FInterpCurvePoint<FVector>*> ConnectedPoints;
+	for (const FInterpCurve<FVector>& ControlPointsOfSingleRoad : ControlPointsOfAmongRoads)
+	{
+		FInterpCurvePoint<FVector> FirstPoint = ControlPointsOfSingleRoad.Points[0];
+		ConnectedPoints.Emplace(&FirstPoint);
+		for (int i = 1; i < ControlPointsOfSingleRoad.Points.Num(); ++i)
+		{
+			FInterpCurvePoint<FVector> LastPoint = ControlPointsOfSingleRoad.Points[i - 1];
+			FInterpCurvePoint<FVector> CurrentPoint = ControlPointsOfSingleRoad.Points[i];
+			DrawDebugLine(GetWorld(), LastPoint.OutVal+VerticalOffset, CurrentPoint.OutVal+VerticalOffset, LineInIndividualGroup, true, -1, 0, 50.0f);
+		}
+		FInterpCurvePoint<FVector> LastPoint = ControlPointsOfSingleRoad.Points.Last();
+		ConnectedPoints.Emplace(&LastPoint);
+	}
+	for (int32 i = 1; i < ConnectedPoints.Num(); i += 2)
+	{
+		int32 ConnectTo = (i + 1) % ConnectedPoints.Num();
+		DrawDebugLine(GetWorld(), ConnectedPoints[i]->OutVal+VerticalOffset, ConnectedPoints[ConnectTo]->OutVal+VerticalOffset, LineBetweenGroups, true,
+		              -1, 0, 50.0f);
+	}
+}
+
+void UBlockMeshGenerator::GenerateInnerRefSpline()
+{
+	ControlPointsOfAmongRoads;
+	FInterpCurveVector2D ReferenceSpline;
+	FInterpCurvePoint<FVector2D> SplinePoint(0.0, FVector2D::ZeroVector, -FVector2D::ZeroVector, FVector2D::ZeroVector,
+	                                         CIM_CurveAuto);
+	ReferenceSpline.Points.Emplace(SplinePoint);
+}
+
 void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
 {
 	if (!Materials.IsEmpty() && MeshComponent.IsValid())

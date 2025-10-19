@@ -1043,8 +1043,8 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 			FTransform LastTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
 				PolyLineLengths[ControlPointIndex - 1], ESplineCoordinateSpace::World,
 				true);
-			
-			if (FrontNeighbourDis >AdditionalSampleDistance)
+
+			if (FrontNeighbourDis > AdditionalSampleDistance)
 			{
 				LastTransform = TargetSpline->GetTransformAtDistanceAlongSpline(
 					PolyLineLengths[ControlPointIndex] - AdditionalSampleDistance,
@@ -1158,6 +1158,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		return;
 	}
 	TArray<TArray<FVector>> AllLoopPath;
+	TArray<TArray<FInterpCurveVector>> AllRefsSplineGroup;
 	//获取生成轮廓信息
 	for (int32 i = 0; i < BlockLoops.Num(); ++i)
 	{
@@ -1168,6 +1169,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes.Last());
 		//单个循环边组
 		TArray<FVector> SingleLoopPath;
+		TArray<FInterpCurveVector> SingleRoadRefGroup;
 		for (int j = 0; j < RoadIndexes.Num(); ++j)
 		{
 			PrintStr += FString::Printf(TEXT("-(%d)-"), RoadIndexes[j]);
@@ -1191,10 +1193,13 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 			ensureAlways(
 				(RoadPathFromConnection==GraphStartEdge||RoadPathFromConnection==GraphEndEdge)&&(RoadPathToConnection==
 					GraphStartEdge||RoadPathToConnection==GraphEndEdge));
+			bool bIsForwardTraverse = RoadPathFromConnection == GraphStartEdge;
 			//根据道路朝向提取Location
-			TArray<FVector> RoadEdgeLocArray = RoadGenerator->GetRoadEdgePoints(
-				RoadPathFromConnection == GraphStartEdge);
+			TArray<FVector> RoadEdgeLocArray = RoadGenerator->GetRoadEdgePoints(bIsForwardTraverse);
 			SingleLoopPath.Append(RoadEdgeLocArray);
+			//根据道路走向提取参考Spline
+			SingleRoadRefGroup.Emplace(
+				RoadGenerator->GetSplineControlPointsInRoadRange(bIsForwardTraverse, ECoordOffsetType::LEFTEDGE));
 			//十字路口的衔接点
 			PrintStr += FString::Printf(TEXT("[%d]"), IntersectionIndexes[j]);
 			TWeakObjectPtr<UIntersectionMeshGenerator> IntersectionGeneratorWeak = IDToIntersectionGenerator[
@@ -1228,6 +1233,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 			}
 		}
 		AllLoopPath.Emplace(SingleLoopPath);
+		AllRefsSplineGroup.Emplace(SingleRoadRefGroup);
 		UE_LOG(LogTemp, Display, TEXT("Block Loop:%d {%s}"), i, *PrintStr);
 	}
 	//生成Actor并挂载
@@ -1247,6 +1253,7 @@ void URoadGeneratorSubsystem::GenerateCityBlock()
 		UBlockMeshGenerator* GeneratorComp = Cast<UBlockMeshGenerator>(GeneratorCompTemp);
 		GeneratorComp->SetMeshComponent(MeshComp);
 		GeneratorComp->SetSweepPath(AllLoopPath[i]);
+		GeneratorComp->SetInnerSplinePoints(AllRefsSplineGroup[i]);
 		IDToBlockGenerator.Emplace(GeneratorComp->GetGlobalIndex(), TWeakObjectPtr<UBlockMeshGenerator>(GeneratorComp));
 	}
 	//生成Mesh
