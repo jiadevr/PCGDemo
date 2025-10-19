@@ -170,7 +170,9 @@ TArray<FVector> URoadMeshGenerator::GetRoadEdgePoints(bool bForwardOrderDir)
 	return Results;
 }
 
-TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForwardOrderDir)
+TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForwardOrderDir,
+                                                                      ECoordOffsetType OffsetType,
+                                                                      float CustomOffsetOnLeft)
 {
 	TArray<FVector> Results;
 	if (!ReferenceSpline.IsValid())
@@ -183,14 +185,40 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 
 	FVector RoadStartLocation = SweepPointsTrans[0].GetLocation();
 	RoadStartLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadStartLocation);
+	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
 	float StartAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadStartLocation, ESplineCoordinateSpace::World);
 	float StartAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(StartAsDist);
+	//处理偏移问题
+	if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
+	{
+		FVector StartRightVector = OwnerSpline->GetRightVectorAtDistanceAlongSpline(
+			StartAsDist, ESplineCoordinateSpace::World);
+		float OffsetValue = CustomOffsetOnLeft;
+		if (OffsetType == ECoordOffsetType::LEFTEDGE)
+		{
+			OffsetValue = RoadInfo.CrossSectionCoord[0].X;
+		}
+		RoadStartLocation += OffsetValue * StartRightVector * -1.0;
+	}
 
 	FVector RoadEndLocation = SweepPointsTrans.Last().GetLocation();
 	RoadEndLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadEndLocation);
 	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
 	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::World);
 	float EndAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(EndAsDist);
+	//处理偏移
+	if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
+	{
+		FVector EndRightVector = OwnerSpline->GetRightVectorAtDistanceAlongSpline(
+			EndAsDist, ESplineCoordinateSpace::World);
+		float OffsetValue = CustomOffsetOnLeft;
+		if (OffsetType == ECoordOffsetType::LEFTEDGE)
+		{
+			OffsetValue = RoadInfo.CrossSectionCoord[0].X;
+		}
+		RoadEndLocation += OffsetValue * EndRightVector * -1.0;
+	}
+
 
 	//起点到终点跨过的ControlPoints个数，需要特别考虑Loop类型End<Start
 	int32 ControlPointNumInRange = FMath::FloorToInt(EndAsInputKey) - FMath::FloorToInt(StartAsInputKey);
@@ -216,6 +244,19 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 				                    : (FMath::CeilToInt(EndAsInputKey) - i + NumControlPoints) % (NumControlPoints);
 			FVector ControlPointLocWS = OwnerSpline->GetLocationAtSplineInputKey(static_cast<float>(ResultIndex),
 				ESplineCoordinateSpace::World);
+			//对于获取边缘的情况
+			if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
+			{
+				FVector ControlPointRightVector = OwnerSpline->GetRightVectorAtSplinePoint(
+					ResultIndex, ESplineCoordinateSpace::World);
+				float OffsetValue = CustomOffsetOnLeft;
+				if (OffsetType == ECoordOffsetType::LEFTEDGE)
+				{
+					OffsetValue = RoadInfo.CrossSectionCoord[0].X;
+				}
+				ControlPointLocWS += OffsetValue * ControlPointRightVector * -1.0;
+			}
+
 			if (i == 1 || i == ControlPointNumInRange)
 			{
 				//两者均已经转化为世界坐标

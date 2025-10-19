@@ -11,6 +11,14 @@
 
 class USplineComponent;
 
+UENUM(BlueprintType)
+enum class ECoordOffsetType:uint8
+{
+	ROADCENTER,
+	LEFTEDGE,
+	CUSTOM
+};
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class CITYGENERATOR_API URoadMeshGenerator : public UActorComponent, public IMeshGeneratorInterface
 {
@@ -54,7 +62,10 @@ public:
 	[[nodiscard]] TArray<FVector> GetRoadEdgePoints(bool bForwardOrderDir = true);
 
 	UFUNCTION(BlueprintCallable)
-	[[nodiscard]] TArray<FVector> GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true);
+	[[nodiscard]] TArray<FVector> GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true,
+	                                                                ECoordOffsetType OffsetType =
+		                                                                ECoordOffsetType::ROADCENTER,
+	                                                                float CustomOffsetOnLeft = 0.0f);
 
 	/**
 	 * 获取道路构建点信息，用于确定道路连接的Intersection和其构建顺序，后续可能合并到GetRoadEdgePoints
