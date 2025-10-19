@@ -178,39 +178,59 @@ TArray<FVector> URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bForw
 		return Results;
 	}
 	USplineComponent* OwnerSpline = ReferenceSpline.Pin().Get();
+	AActor* OwnerActor = GetOwner();
+	if (OwnerActor == nullptr) { return Results; }
+
 	FVector RoadStartLocation = SweepPointsTrans[0].GetLocation();
-	float StartAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadStartLocation, ESplineCoordinateSpace::Local);
-	float StartAsInputKey = OwnerSpline->GetInputKeyAtDistanceAlongSpline(StartAsDist);
+	RoadStartLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadStartLocation);
+	float StartAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadStartLocation, ESplineCoordinateSpace::World);
+	float StartAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(StartAsDist);
+
 	FVector RoadEndLocation = SweepPointsTrans.Last().GetLocation();
-	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::Local);
-	float EndAsInputKey = OwnerSpline->GetInputKeyAtDistanceAlongSpline(EndAsDist);
-	//起点到终点跨过的ControlPoints个数
+	RoadEndLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadEndLocation);
+	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
+	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::World);
+	float EndAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(EndAsDist);
+
+	//起点到终点跨过的ControlPoints个数，需要特别考虑Loop类型End<Start
 	int32 ControlPointNumInRange = FMath::FloorToInt(EndAsInputKey) - FMath::FloorToInt(StartAsInputKey);
-	Results.SetNum(2 + ControlPointNumInRange);
+	int32 NumControlPoints = OwnerSpline->GetNumberOfSplinePoints();
+	//Loop类型Start从较大值绕回到Start
+	if (ControlPointNumInRange < 0)
+	{
+		ensure(OwnerSpline->IsClosedLoop());
+		ControlPointNumInRange = NumControlPoints - FMath::CeilToInt(StartAsInputKey) +
+			FMath::CeilToInt(EndAsInputKey);
+	}
+	Results.Reserve(2 + ControlPointNumInRange);
 	//NewControlPoint0
-	FVector FirstElemInWS = UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(),
-	                                                              bForwardOrderDir
-		                                                              ? RoadStartLocation
-		                                                              : RoadEndLocation);
-	Results[0] = FirstElemInWS;
+	Results.Emplace(bForwardOrderDir ? RoadStartLocation : RoadEndLocation);
+	const FVector& LastElem = bForwardOrderDir ? RoadEndLocation : RoadStartLocation;
 	//是结尾到开头连接的部分
 	if (ControlPointNumInRange > 0)
 	{
 		for (int32 i = 1; i <= ControlPointNumInRange; i++)
 		{
 			int32 ResultIndex = bForwardOrderDir
-				                    ? FMath::FloorToInt(StartAsInputKey) + i
-				                    : FMath::CeilToInt(EndAsInputKey) - i;
-			Results[i] = OwnerSpline->GetLocationAtSplineInputKey(static_cast<float>(ResultIndex),
-			                                                      ESplineCoordinateSpace::World);
+				                    ? (FMath::FloorToInt(StartAsInputKey) + i) % (NumControlPoints)
+				                    : (FMath::CeilToInt(EndAsInputKey) - i + NumControlPoints) % (NumControlPoints);
+			FVector ControlPointLocWS = OwnerSpline->GetLocationAtSplineInputKey(static_cast<float>(ResultIndex),
+				ESplineCoordinateSpace::World);
+			if (i == 1 || i == ControlPointNumInRange)
+			{
+				//两者均已经转化为世界坐标
+				double DistanceToNeighbour = FVector::DistSquared(ControlPointLocWS,
+				                                                  i == 1 ? Results[0] : LastElem);
+				if (DistanceToNeighbour <= 10000)
+				{
+					continue;
+				}
+			}
+			Results.Emplace(ControlPointLocWS);
 		}
 	}
-	FVector LastElemInWS = UKismetMathLibrary::TransformLocation(GetOwner()->GetTransform(),
-	                                                             bForwardOrderDir
-		                                                             ? RoadEndLocation
-		                                                             : RoadStartLocation);
-	Results[ControlPointNumInRange + 1] = LastElemInWS;
-	// OwnerSpline->GetDistanceAlongSplineAtSplinePoint()
+	//已经是世界空间了
+	Results.Emplace(LastElem);
 	return Results;
 }
 
