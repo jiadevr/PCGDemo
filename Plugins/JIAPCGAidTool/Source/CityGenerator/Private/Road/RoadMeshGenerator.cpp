@@ -183,6 +183,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 	USplineComponent* OwnerSpline = ReferenceSpline.Pin().Get();
 	AActor* OwnerActor = GetOwner();
 	if (OwnerActor == nullptr) { return Result; }
+	const float DirectionScalar = bForwardOrderDir ? -1.0f : 1.0f;
 
 	FVector RoadStartLocation = SweepPointsTrans[0].GetLocation();
 	RoadStartLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadStartLocation);
@@ -200,7 +201,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 		{
 			OffsetValue = RoadInfo.CrossSectionCoord[0].X;
 		}
-		RoadStartLocation += OffsetValue * StartRightVector * -1.0;
+		RoadStartLocation += OffsetValue * StartRightVector * DirectionScalar;
 	}
 	FInterpCurvePoint<FVector> StartPoint(bForwardOrderDir ? 0.0f : 1.0f, RoadStartLocation, -StartTangent,
 	                                      StartTangent, CIM_CurveAuto);
@@ -221,7 +222,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 		{
 			OffsetValue = RoadInfo.CrossSectionCoord[0].X;
 		}
-		RoadEndLocation += OffsetValue * EndRightVector * -1.0;
+		RoadEndLocation += OffsetValue * EndRightVector * DirectionScalar;
 	}
 	FInterpCurvePoint<FVector> EndPoint(bForwardOrderDir ? 1.0f : 0.0f, RoadEndLocation, -EndTangent, EndTangent,
 	                                    CIM_CurveAuto);
@@ -267,7 +268,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 				{
 					OffsetValue = RoadInfo.CrossSectionCoord[0].X;
 				}
-				ControlPointLocWS += OffsetValue * ControlPointRightVector * -1.0;
+				ControlPointLocWS += OffsetValue * ControlPointRightVector * DirectionScalar;
 			}
 			float TempTime = i / (2.0f + ControlPointNumInRange);
 			FInterpCurvePoint<FVector> MidPoint(TempTime, ControlPointLocWS, -ControlPointTangentWS,
