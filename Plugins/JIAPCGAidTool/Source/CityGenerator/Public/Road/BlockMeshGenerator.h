@@ -7,6 +7,8 @@
 #include "Components/ActorComponent.h"
 #include "BlockMeshGenerator.generated.h"
 
+class USplineComponent;
+
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class CITYGENERATOR_API UBlockMeshGenerator : public UActorComponent, public IMeshGeneratorInterface
 {
@@ -29,6 +31,7 @@ public:
 
 	void SetInnerSplinePoints(const TArray<FInterpCurveVector>& InOrderedControlPoints);
 
+	UFUNCTION(BlueprintCallable,CallInEditor)
 	void GenerateInnerRefSpline();
 
 protected:
@@ -59,4 +62,7 @@ protected:
 	};
 
 	TArray<FInterpCurveVector> ControlPointsOfAmongRoads;
+
+	UPROPERTY(VisibleAnywhere)
+	USplineComponent* RefSpline = nullptr;
 };
