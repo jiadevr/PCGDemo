@@ -20,7 +20,7 @@ void UNotifyUtilities::ShowPopupMsgAtCorner(const FString& Message)
 {
 	FNotificationInfo NotificationInfo(FText::FromStringView(Message));
 	NotificationInfo.bUseLargeFont = true;
-	NotificationInfo.FadeInDuration = 10.0f;
+	NotificationInfo.FadeInDuration = 0.5f;
 	FSlateNotificationManager::Get().AddNotification(NotificationInfo);
 	UE_LOG(JIAPCGAidTool, Display, TEXT("%s"), *Message);
 }

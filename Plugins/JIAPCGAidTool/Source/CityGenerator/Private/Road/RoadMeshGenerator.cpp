@@ -175,7 +175,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
                                                                          float CustomOffsetOnLeft)
 {
 	FInterpCurveVector Result;
-	TArray<FVector> Results;
+	//TArray<FVector> Results;
 	if (!ReferenceSpline.IsValid())
 	{
 		return Result;
@@ -190,7 +190,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
 	float StartAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadStartLocation, ESplineCoordinateSpace::World);
 	float StartAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(StartAsDist);
-	FVector StartTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(StartAsDist, ESplineCoordinateSpace::World);
+	//FVector StartTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(StartAsDist, ESplineCoordinateSpace::World);
 	//处理偏移问题
 	if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
 	{
@@ -203,15 +203,15 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 		}
 		RoadStartLocation += OffsetValue * StartRightVector * DirectionScalar;
 	}
-	FInterpCurvePoint<FVector> StartPoint(bForwardOrderDir ? 0.0f : 1.0f, RoadStartLocation, -StartTangent,
-	                                      StartTangent, CIM_CurveAuto);
+	FInterpCurvePoint<FVector> StartPoint(bForwardOrderDir ? 0.0f : 1.0f, RoadStartLocation, FVector::ZeroVector,
+	                                      FVector::ZeroVector, CIM_Constant);
 
 	FVector RoadEndLocation = SweepPointsTrans.Last().GetLocation();
 	RoadEndLocation = UKismetMathLibrary::TransformLocation(OwnerActor->GetTransform(), RoadEndLocation);
 	//下面这个函数有问题，输入数字大的时候使用Local可能会输出(0,0,0)
 	float EndAsDist = OwnerSpline->GetDistanceAlongSplineAtLocation(RoadEndLocation, ESplineCoordinateSpace::World);
 	float EndAsInputKey = OwnerSpline->GetInputKeyValueAtDistanceAlongSpline(EndAsDist);
-	FVector EndTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(EndAsDist, ESplineCoordinateSpace::World);
+	//FVector EndTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(EndAsDist, ESplineCoordinateSpace::World);
 	//处理偏移
 	if (OffsetType == ECoordOffsetType::LEFTEDGE || OffsetType == ECoordOffsetType::CUSTOM)
 	{
@@ -224,8 +224,9 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 		}
 		RoadEndLocation += OffsetValue * EndRightVector * DirectionScalar;
 	}
-	FInterpCurvePoint<FVector> EndPoint(bForwardOrderDir ? 1.0f : 0.0f, RoadEndLocation, -EndTangent, EndTangent,
-	                                    CIM_CurveAuto);
+	FInterpCurvePoint<FVector> EndPoint(bForwardOrderDir ? 1.0f : 0.0f, RoadEndLocation, FVector::ZeroVector,
+	                                    FVector::ZeroVector,
+	                                    CIM_Constant);
 
 	//起点到终点跨过的ControlPoints个数，需要特别考虑Loop类型End<Start
 	int32 ControlPointNumInRange = FMath::FloorToInt(EndAsInputKey) - FMath::FloorToInt(StartAsInputKey);
@@ -252,10 +253,14 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 			int32 ResultIndex = bForwardOrderDir
 				                    ? (FMath::FloorToInt(StartAsInputKey) + i) % (NumControlPoints)
 				                    : (FMath::CeilToInt(EndAsInputKey) - i + NumControlPoints) % (NumControlPoints);
-			FVector ControlPointLocWS = OwnerSpline->GetLocationAtSplineInputKey(static_cast<float>(ResultIndex),
+			float InputKeyAsFloat = static_cast<float>(ResultIndex);
+			FVector ControlPointLocWS = OwnerSpline->GetLocationAtSplineInputKey(InputKeyAsFloat,
 				ESplineCoordinateSpace::World);
-			FVector ControlPointTangentWS = OwnerSpline->GetTangentAtSplineInputKey(static_cast<float>(ResultIndex),
-				ESplineCoordinateSpace::World);
+			//只要调整了Tangent控制柄就会变成CustomTangent,对应产生Rotation
+			FVector ControlPointArriveTangentWS = (bForwardOrderDir ? 1.0 : -1.0) * OwnerSpline->
+				GetArriveTangentAtSplinePoint(InputKeyAsFloat, ESplineCoordinateSpace::World);
+			FVector ControlPointLeaveTangentWS = (bForwardOrderDir ? 1.0 : -1.0) * OwnerSpline->
+				GetLeaveTangentAtSplinePoint(InputKeyAsFloat, ESplineCoordinateSpace::World);
 
 			ESplinePointType::Type PointType = OwnerSpline->GetSplinePointType(ResultIndex);
 			//对于获取边缘的情况
@@ -271,9 +276,15 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 				ControlPointLocWS += OffsetValue * ControlPointRightVector * DirectionScalar;
 			}
 			float TempTime = i / (2.0f + ControlPointNumInRange);
-			FInterpCurvePoint<FVector> MidPoint(TempTime, ControlPointLocWS, -ControlPointTangentWS,
-			                                    ControlPointTangentWS,
+			//对于Curve类型两个Tangent值相同
+			FInterpCurvePoint<FVector> MidPoint(TempTime, ControlPointLocWS, ControlPointArriveTangentWS,
+			                                    ControlPointLeaveTangentWS,
 			                                    ConvertSplinePointTypeToInterpCurveMode(PointType));
+			/*if (CIM_CurveAuto == MidPoint.InterpMode||CIM_CurveUser == MidPoint.InterpMode)
+			{
+				MidPoint.InterpMode = CIM_CurveAutoClamped;
+			}*/
+
 			if (i == 1 || i == ControlPointNumInRange)
 			{
 				//两者均已经转化为世界坐标

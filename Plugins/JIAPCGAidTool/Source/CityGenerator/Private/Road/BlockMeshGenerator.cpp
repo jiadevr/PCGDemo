@@ -125,29 +125,32 @@ void UBlockMeshGenerator::SetInnerSplinePoints(
 {
 	ControlPointsOfAmongRoads = InOrderedControlPoints;
 	//DrawDebugLines
-	FColor LineInIndividualGroup = FColor::MakeRandomSeededColor(GetGlobalIndex());
-	FColor LineBetweenGroups = FColor::MakeRandomColor();
-	FVector VerticalOffset = FVector::UpVector * 50.0;
-	TArray<const FInterpCurvePoint<FVector>*> ConnectedPoints;
-	ConnectedPoints.Reserve(ControlPointsOfAmongRoads.Num() * 2);
-	for (const FInterpCurve<FVector>& ControlPointsOfSingleRoad : ControlPointsOfAmongRoads)
+	if (bDrawVisualDebug)
 	{
-		ConnectedPoints.Emplace(&ControlPointsOfSingleRoad.Points[0]);
-		for (int i = 1; i < ControlPointsOfSingleRoad.Points.Num(); ++i)
+		FColor LineInIndividualGroup = FColor::MakeRandomSeededColor(GetGlobalIndex());
+		FColor LineBetweenGroups = FColor::MakeRandomColor();
+		FVector VerticalOffset = FVector::UpVector * 50.0;
+		TArray<const FInterpCurvePoint<FVector>*> ConnectedPoints;
+		ConnectedPoints.Reserve(ControlPointsOfAmongRoads.Num() * 2);
+		for (const FInterpCurve<FVector>& ControlPointsOfSingleRoad : ControlPointsOfAmongRoads)
 		{
-			FInterpCurvePoint<FVector> LastPoint = ControlPointsOfSingleRoad.Points[i - 1];
-			FInterpCurvePoint<FVector> CurrentPoint = ControlPointsOfSingleRoad.Points[i];
-			DrawDebugLine(GetWorld(), LastPoint.OutVal + VerticalOffset, CurrentPoint.OutVal + VerticalOffset,
-			              LineInIndividualGroup, true, -1, 0, 50.0f);
+			ConnectedPoints.Emplace(&ControlPointsOfSingleRoad.Points[0]);
+			for (int i = 1; i < ControlPointsOfSingleRoad.Points.Num(); ++i)
+			{
+				FInterpCurvePoint<FVector> LastPoint = ControlPointsOfSingleRoad.Points[i - 1];
+				FInterpCurvePoint<FVector> CurrentPoint = ControlPointsOfSingleRoad.Points[i];
+				DrawDebugLine(GetWorld(), LastPoint.OutVal + VerticalOffset, CurrentPoint.OutVal + VerticalOffset,
+				              LineInIndividualGroup, true, -1, 0, 50.0f);
+			}
+			ConnectedPoints.Emplace(&ControlPointsOfSingleRoad.Points.Last());
 		}
-		ConnectedPoints.Emplace(&ControlPointsOfSingleRoad.Points.Last());
-	}
-	for (int32 i = 1; i < ConnectedPoints.Num(); i += 2)
-	{
-		int32 ConnectTo = (i + 1) % ConnectedPoints.Num();
-		DrawDebugLine(GetWorld(), ConnectedPoints[i]->OutVal + VerticalOffset,
-		              ConnectedPoints[ConnectTo]->OutVal + VerticalOffset, LineBetweenGroups, true,
-		              -1, 0, 50.0f);
+		for (int32 i = 1; i < ConnectedPoints.Num(); i += 2)
+		{
+			int32 ConnectTo = (i + 1) % ConnectedPoints.Num();
+			DrawDebugLine(GetWorld(), ConnectedPoints[i]->OutVal + VerticalOffset,
+			              ConnectedPoints[ConnectTo]->OutVal + VerticalOffset, LineBetweenGroups, true,
+			              -1, 0, 50.0f);
+		}
 	}
 }
 
@@ -170,19 +173,44 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 		{
 			ControlPoints.Emplace(&ControlPointsOfSingleRoad.Points[i]);
 		}
+		//理论上不存在
+		if (1 == ControlPointsOfSingleRoad.Points.Num())
+		{
+			continue;
+		}
 	}
 	for (int i = 0; i < ControlPoints.Num(); ++i)
 	{
-		FSplinePoint SplinePoint(i / (ControlPoints.Num() - 1), ControlPoints[i]->OutVal,
-		                         ControlPoints[i]->ArriveTangent, ControlPoints[i]->LeaveTangent, FRotator(0),
+		FVector LocationInLS = UKismetMathLibrary::InverseTransformLocation(
+			Owner->GetTransform(), ControlPoints[i]->OutVal);
+		FVector ArriveTangentInLS = UKismetMathLibrary::InverseTransformLocation(
+			Owner->GetTransform(), ControlPoints[i]->ArriveTangent);
+		FVector LeaveTangentInLS = UKismetMathLibrary::InverseTransformLocation(
+			Owner->GetTransform(), ControlPoints[i]->LeaveTangent);
+		FSplinePoint SplinePoint(i, LocationInLS,
+		                         ArriveTangentInLS, LeaveTangentInLS, FRotator(0),
 		                         FVector(1), ConvertInterpCurveModeToSplinePointType(ControlPoints[i]->InterpMode));
 		RefSpline->AddPoint(SplinePoint, false);
 	}
-	//上面的InInputKey不对
+	for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
+	{
+		FVector ArriveTangent = RefSpline->GetArriveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
+		FVector LeaveTangent = RefSpline->GetLeaveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
+		UE_LOG(LogTemp, Warning, TEXT("Point %d - ArriveTangent: %s, LeaveTangent: %s"),
+		       i, *ArriveTangent.ToString(), *LeaveTangent.ToString());
+	}
+	UE_LOG(LogTemp, Warning, TEXT("_______________________________________________"))
+	RefSpline->SetClosedLoop(true, false);
 	RefSpline->UpdateSpline();
+	for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
+	{
+		FVector ArriveTangent = RefSpline->GetArriveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
+		FVector LeaveTangent = RefSpline->GetLeaveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
+		UE_LOG(LogTemp, Warning, TEXT("Point %d - ArriveTangent: %s, LeaveTangent: %s"),
+		       i, *ArriveTangent.ToString(), *LeaveTangent.ToString());
+	}
+	//
 	/*
-
-
 	FInterpCurveVector ReferenceSpline;
 	FInterpCurvePoint<FVector2D> SplinePoint(0.0, FVector2D::ZeroVector, -FVector2D::ZeroVector,
 	                                         FVector2D::ZeroVector,
