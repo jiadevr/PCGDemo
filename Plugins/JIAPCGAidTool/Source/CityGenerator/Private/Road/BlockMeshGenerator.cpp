@@ -183,39 +183,37 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 	{
 		FVector LocationInLS = UKismetMathLibrary::InverseTransformLocation(
 			Owner->GetTransform(), ControlPoints[i]->OutVal);
-		FVector ArriveTangentInLS = UKismetMathLibrary::InverseTransformLocation(
+		FVector ArriveTangentInLS = UKismetMathLibrary::InverseTransformDirection(
 			Owner->GetTransform(), ControlPoints[i]->ArriveTangent);
-		FVector LeaveTangentInLS = UKismetMathLibrary::InverseTransformLocation(
+		FVector LeaveTangentInLS = UKismetMathLibrary::InverseTransformDirection(
 			Owner->GetTransform(), ControlPoints[i]->LeaveTangent);
+		ESplinePointType::Type PointType = ConvertInterpCurveModeToSplinePointType(ControlPoints[i]->InterpMode);
+		if (PointType==ESplinePointType::Curve||PointType==ESplinePointType::CurveClamped)
+		{
+			PointType = ESplinePointType::CurveCustomTangent;
+		}
 		FSplinePoint SplinePoint(i, LocationInLS,
 		                         ArriveTangentInLS, LeaveTangentInLS, FRotator(0),
-		                         FVector(1), ConvertInterpCurveModeToSplinePointType(ControlPoints[i]->InterpMode));
+		                         FVector(1), PointType);
 		RefSpline->AddPoint(SplinePoint, false);
 	}
-	for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
+	/*for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
 	{
 		FVector ArriveTangent = RefSpline->GetArriveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
 		FVector LeaveTangent = RefSpline->GetLeaveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
 		UE_LOG(LogTemp, Warning, TEXT("Point %d - ArriveTangent: %s, LeaveTangent: %s"),
 		       i, *ArriveTangent.ToString(), *LeaveTangent.ToString());
 	}
-	UE_LOG(LogTemp, Warning, TEXT("_______________________________________________"))
+	UE_LOG(LogTemp, Warning, TEXT("_______________________________________________"))*/
 	RefSpline->SetClosedLoop(true, false);
 	RefSpline->UpdateSpline();
-	for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
+	/*for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
 	{
 		FVector ArriveTangent = RefSpline->GetArriveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
 		FVector LeaveTangent = RefSpline->GetLeaveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
 		UE_LOG(LogTemp, Warning, TEXT("Point %d - ArriveTangent: %s, LeaveTangent: %s"),
 		       i, *ArriveTangent.ToString(), *LeaveTangent.ToString());
-	}
-	//
-	/*
-	FInterpCurveVector ReferenceSpline;
-	FInterpCurvePoint<FVector2D> SplinePoint(0.0, FVector2D::ZeroVector, -FVector2D::ZeroVector,
-	                                         FVector2D::ZeroVector,
-	                                         CIM_CurveAuto);
-	ReferenceSpline.Points.Emplace(SplinePoint);*/
+	}*/
 }
 
 void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
