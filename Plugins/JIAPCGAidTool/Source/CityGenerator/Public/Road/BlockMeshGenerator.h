@@ -65,4 +65,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere)
 	USplineComponent* RefSpline = nullptr;
+
+	void AdjustTangentValueInline(FInterpCurve<FVector>& PointGroup);
 };

@@ -6,6 +6,7 @@
 #include "MeshGeneratorInterface.h"
 #include "RoadSegmentStruct.h"
 #include "Components/ActorComponent.h"
+#include "Components/SplineComponent.h"
 #include "RoadMeshGenerator.generated.h"
 
 
@@ -63,9 +64,9 @@ public:
 
 	//UFUNCTION(BlueprintCallable)
 	[[nodiscard]] FInterpCurveVector GetSplineControlPointsInRoadRange(bool bForwardOrderDir = true,
-	                                                                ECoordOffsetType OffsetType =
-		                                                                ECoordOffsetType::ROADCENTER,
-	                                                                float CustomOffsetOnLeft = 0.0f);
+	                                                                   ECoordOffsetType OffsetType =
+		                                                                   ECoordOffsetType::ROADCENTER,
+	                                                                   float CustomOffsetOnLeft = 0.0f);
 
 	/**
 	 * 获取道路构建点信息，用于确定道路连接的Intersection和其构建顺序，后续可能合并到GetRoadEdgePoints
@@ -119,4 +120,15 @@ protected:
 	const FString MaterialPath{"/Game/Road/Material/MI/MI_FreewayAsphalt_Road"};
 
 	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/MI_Road"};
+
+	void GetWSPointFromRoadCenterWithOffset(FVector& PointOnRoadCenter, float DistanceFromStart,
+	                                        const USplineComponent* OwnerSpline, bool bForwardOrderDir,
+	                                        ECoordOffsetType OffsetType = ECoordOffsetType::LEFTEDGE,
+	                                        float CustomOffsetOnLeft = 0);
+	void GetWSPointFromRoadCenterWithOffset(FVector& PointOnRoadCenter, int32 ControlPointIndex,
+	                                        const USplineComponent* OwnerSpline, bool bForwardOrderDir,
+	                                        ECoordOffsetType OffsetType = ECoordOffsetType::LEFTEDGE,
+	                                        float CustomOffsetOnLeft = 0);
+
+	
 };

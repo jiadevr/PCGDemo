@@ -167,8 +167,9 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 	RefSpline = Cast<USplineComponent>(SplineCompTemp);
 	RefSpline->ClearSplinePoints();
 	TArray<const FInterpCurvePoint<FVector>*> ControlPoints;
-	for (const FInterpCurve<FVector>& ControlPointsOfSingleRoad : ControlPointsOfAmongRoads)
+	for (FInterpCurve<FVector>& ControlPointsOfSingleRoad : ControlPointsOfAmongRoads)
 	{
+		AdjustTangentValueInline(ControlPointsOfSingleRoad);
 		for (int i = 0; i < ControlPointsOfSingleRoad.Points.Num(); ++i)
 		{
 			ControlPoints.Emplace(&ControlPointsOfSingleRoad.Points[i]);
@@ -188,7 +189,7 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 		FVector LeaveTangentInLS = UKismetMathLibrary::InverseTransformDirection(
 			Owner->GetTransform(), ControlPoints[i]->LeaveTangent);
 		ESplinePointType::Type PointType = ConvertInterpCurveModeToSplinePointType(ControlPoints[i]->InterpMode);
-		if (PointType==ESplinePointType::Curve||PointType==ESplinePointType::CurveClamped)
+		if (PointType == ESplinePointType::Curve || PointType == ESplinePointType::CurveClamped)
 		{
 			PointType = ESplinePointType::CurveCustomTangent;
 		}
@@ -273,4 +274,36 @@ void UBlockMeshGenerator::InitialMaterials()
 		}
 	}
 	Materials.Emplace(nullptr);
+}
+
+void UBlockMeshGenerator::AdjustTangentValueInline(FInterpCurve<FVector>& PointGroup)
+{
+	if (PointGroup.Points.Num() <= 2)
+	{
+		return;
+	}
+	//首尾不涉及Tangent问题
+	for (int32 i = 1; i < PointGroup.Points.Num() - 1; ++i)
+	{
+		const FVector& LocWS = PointGroup.Points[i].OutVal;
+		DrawDebugSphere(GetWorld(), LocWS, 100.0f, 10, FColor::Red, true, -1, 0, 10.0f);
+		const FVector& PreLocWS = PointGroup.Points[i - 1].OutVal;
+		const FVector& NextLocWS = PointGroup.Points[i + 1].OutVal;
+		const double DisSquaredToNeighbour = FMath::Min(FVector::DistSquared(LocWS, PreLocWS),
+		                                                FVector::DistSquared(LocWS, NextLocWS));
+		//使用Curve类型时ArriveTangent和LeaveTangent可以不同，根据SplineControlPoint管的是后一段的思路使用LeaveTangent
+		FVector& Tangent = PointGroup.Points[i].LeaveTangent;
+		if (Tangent.SquaredLength() > DisSquaredToNeighbour && (PointGroup.Points[i].InterpMode == CIM_CurveUser ||
+			PointGroup.Points[i].InterpMode == CIM_CurveAuto || PointGroup.Points[i].InterpMode ==
+			CIM_CurveAutoClamped))
+		{
+			PointGroup.Points[i].InterpMode = CIM_CurveUser;
+			float OriginalDistance = Tangent.Size();
+			Tangent = Tangent.GetSafeNormal() * 0.8 * FMath::Sqrt(DisSquaredToNeighbour);
+			PointGroup.Points[i].ArriveTangent = Tangent;
+			UE_LOG(LogTemp, Display,
+			       TEXT("Index [%d] At [%s] Tangent Value Was Clamped From %f To %f,newTangentValue %s"), i,
+			       *LocWS.ToString(), OriginalDistance, Tangent.Size(), *Tangent.ToString());
+		}
+	}
 }
