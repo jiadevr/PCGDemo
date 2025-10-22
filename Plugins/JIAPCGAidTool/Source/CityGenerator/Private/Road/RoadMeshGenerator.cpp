@@ -193,7 +193,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 	//FVector StartTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(StartAsDist, ESplineCoordinateSpace::World);
 	//处理偏移问题
 	GetWSPointFromRoadCenterWithOffset(RoadStartLocation, StartAsDist, OwnerSpline, bForwardOrderDir,
-	                                   ECoordOffsetType::LEFTEDGE);
+	                                   OffsetType, CustomOffsetOnLeft);
 	FInterpCurvePoint<FVector> StartPoint(bForwardOrderDir ? 0.0f : 1.0f, RoadStartLocation, FVector::ZeroVector,
 	                                      FVector::ZeroVector, CIM_Constant);
 
@@ -205,7 +205,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 	//FVector EndTangent = OwnerSpline->GetTangentAtDistanceAlongSpline(EndAsDist, ESplineCoordinateSpace::World);
 	//处理偏移
 	GetWSPointFromRoadCenterWithOffset(RoadEndLocation, EndAsDist, OwnerSpline, bForwardOrderDir,
-	                                   ECoordOffsetType::LEFTEDGE);
+	                                   OffsetType, CustomOffsetOnLeft);
 	FInterpCurvePoint<FVector> EndPoint(bForwardOrderDir ? 1.0f : 0.0f, RoadEndLocation, FVector::ZeroVector,
 	                                    FVector::ZeroVector,
 	                                    CIM_Constant);
@@ -250,7 +250,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 			ESplinePointType::Type PointType = OwnerSpline->GetSplinePointType(ResultIndex);
 			//对于获取边缘的情况
 			GetWSPointFromRoadCenterWithOffset(ControlPointLocWS, ResultIndex, OwnerSpline, bForwardOrderDir,
-			                                   ECoordOffsetType::LEFTEDGE);
+			                                   OffsetType, CustomOffsetOnLeft);
 			float TempTime = i / (2.0f + ControlPointNumInRange);
 			//对于Curve类型两个Tangent值相同
 			FInterpCurvePoint<FVector> MidPoint(TempTime, ControlPointLocWS, ControlPointArriveTangentWS,
@@ -281,7 +281,7 @@ FInterpCurveVector URoadMeshGenerator::GetSplineControlPointsInRoadRange(bool bF
 				UE_LOG(LogTemp, Display, TEXT("Add Location At %s Distance %f"), *AppendPointLocWS.ToString(),
 				       AppendPointDis);
 				GetWSPointFromRoadCenterWithOffset(AppendPointLocWS, AppendPointDis, OwnerSpline, bForwardOrderDir,
-				                                   ECoordOffsetType::LEFTEDGE);
+				                                   OffsetType, CustomOffsetOnLeft);
 				FVector AppendPointTangentWS = (bForwardOrderDir ? 1.0 : -1.0) * OwnerSpline->
 					GetTangentAtDistanceAlongSpline(AppendPointDis, ESplineCoordinateSpace::World);
 				//这个值行不行待测试
