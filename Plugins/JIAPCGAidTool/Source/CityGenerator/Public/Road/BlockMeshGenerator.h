@@ -31,7 +31,7 @@ public:
 
 	void SetInnerSplinePoints(const TArray<FInterpCurveVector>& InOrderedControlPoints);
 
-	UFUNCTION(BlueprintCallable,CallInEditor)
+	UFUNCTION(BlueprintCallable, CallInEditor)
 	void GenerateInnerRefSpline();
 
 protected:
@@ -66,5 +66,7 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	USplineComponent* RefSpline = nullptr;
 
+	UPROPERTY(EditAnywhere)
+	float SplineShrinkValue=500.0f;
 	void AdjustTangentValueInline(FInterpCurve<FVector>& PointGroup);
 };

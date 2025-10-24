@@ -167,15 +167,17 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 	RefSpline = Cast<USplineComponent>(SplineCompTemp);
 	RefSpline->ClearSplinePoints();
 	TArray<const FInterpCurvePoint<FVector>*> ControlPoints;
-	for (FInterpCurve<FVector>& ControlPointsOfSingleRoad : ControlPointsOfAmongRoads)
+	
+	for (int32 i = 0; i < ControlPointsOfAmongRoads.Num(); ++i)
 	{
-		AdjustTangentValueInline(ControlPointsOfSingleRoad);
-		for (int i = 0; i < ControlPointsOfSingleRoad.Points.Num(); ++i)
+		AdjustTangentValueInline(ControlPointsOfAmongRoads[i]);
+		//样条线逆时针排序，
+		for (int j = 0; j < ControlPointsOfAmongRoads[i].Points.Num(); ++j)
 		{
-			ControlPoints.Emplace(&ControlPointsOfSingleRoad.Points[i]);
+			ControlPoints.Emplace(&ControlPointsOfAmongRoads[i].Points[j]);
 		}
 		//理论上不存在
-		if (1 == ControlPointsOfSingleRoad.Points.Num())
+		if (1 == ControlPointsOfAmongRoads[i].Points.Num())
 		{
 			continue;
 		}
@@ -198,23 +200,8 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 		                         FVector(1), PointType);
 		RefSpline->AddPoint(SplinePoint, false);
 	}
-	/*for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
-	{
-		FVector ArriveTangent = RefSpline->GetArriveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-		FVector LeaveTangent = RefSpline->GetLeaveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-		UE_LOG(LogTemp, Warning, TEXT("Point %d - ArriveTangent: %s, LeaveTangent: %s"),
-		       i, *ArriveTangent.ToString(), *LeaveTangent.ToString());
-	}
-	UE_LOG(LogTemp, Warning, TEXT("_______________________________________________"))*/
 	RefSpline->SetClosedLoop(true, false);
 	RefSpline->UpdateSpline();
-	/*for (int i = 0; i < RefSpline->GetNumberOfSplinePoints(); ++i)
-	{
-		FVector ArriveTangent = RefSpline->GetArriveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-		FVector LeaveTangent = RefSpline->GetLeaveTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-		UE_LOG(LogTemp, Warning, TEXT("Point %d - ArriveTangent: %s, LeaveTangent: %s"),
-		       i, *ArriveTangent.ToString(), *LeaveTangent.ToString());
-	}*/
 }
 
 void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
@@ -270,7 +257,7 @@ void UBlockMeshGenerator::InitialMaterials()
 		UObject* TargetMatAsset = AssetSubsystem->LoadAsset(*MaterialPath);
 		if (TargetMatAsset)
 		{
-			Materials.Emplace(Cast<UMaterialInterface>(TargetMatAsset));
+			Materials.Add(Cast<UMaterialInterface>(TargetMatAsset));
 		}
 	}
 	Materials.Emplace(nullptr);
