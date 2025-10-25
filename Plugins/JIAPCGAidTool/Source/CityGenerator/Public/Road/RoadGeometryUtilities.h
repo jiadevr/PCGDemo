@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/SplineComponent.h"
 #include "UObject/Object.h"
 #include "RoadGeometryUtilities.generated.h"
 
@@ -14,6 +15,7 @@ UCLASS()
 class CITYGENERATOR_API URoadGeometryUtilities : public UObject
 {
 	GENERATED_BODY()
+
 public:
 	/**
 	 * 使用参数法计算传入的直线段SegmentA和SegmentB在Start-End范围内的交点，使用快速排斥算法剪枝
@@ -53,4 +55,6 @@ public:
 	 * @return 面积绝对值
 	 */
 	static double GetAreaOfSortedPoints(const TArray<FVector2D>& SortedVertex);
+
+	static void ShrinkLoopSpline(const USplineComponent* TargetSpline, float ShrinkValue);
 };

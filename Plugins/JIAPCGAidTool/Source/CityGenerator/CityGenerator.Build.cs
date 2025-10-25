@@ -29,8 +29,11 @@ public class CityGenerator : ModuleRules
 				"Json",
 				"JsonUtilities",
 				"SubobjectDataInterface",
+				"GeometryCore",
 				"GeometryFramework",
-                "GeometryScriptingCore"
+				"DynamicMesh",
+				"MeshConversion",
+				"GeometryScriptingCore"
 			}
 		);
 	}

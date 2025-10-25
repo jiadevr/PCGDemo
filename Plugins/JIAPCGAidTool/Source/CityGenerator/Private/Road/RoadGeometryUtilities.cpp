@@ -187,3 +187,36 @@ double URoadGeometryUtilities::GetAreaOfSortedPoints(const TArray<FVector2D>& So
 	}
 	return FMath::Abs(Area);
 }
+
+void URoadGeometryUtilities::ShrinkLoopSpline(const USplineComponent* TargetSpline, float ShrinkValue)
+{
+	//主要问题在于如何定义收缩
+	if (nullptr == TargetSpline)
+	{
+		return;
+	}
+	const int32 SplinePointNum = TargetSpline->GetNumberOfSplinePoints();
+	if (SplinePointNum < 2)
+	{
+		return;
+	}
+	FVector Start = TargetSpline->GetLocationAtSplinePoint(0, ESplineCoordinateSpace::World);
+	FVector End = TargetSpline->GetLocationAtSplinePoint(SplinePointNum - 1, ESplineCoordinateSpace::World);
+	FVector Center;
+	for (int i = 0; i < SplinePointNum; i++)
+	{
+		Center += TargetSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World) / (1.0f * SplinePointNum);
+	}
+	FVector EdgeDir = (Start - End).GetSafeNormal();
+	bool bIsClockwise = FVector::DotProduct(FVector::CrossProduct((Start - End), (Center - End)), FVector::UpVector) >
+		0.0;
+	for (int i = 0; i < SplinePointNum; i++)
+	{
+		//每个点到Center的连线-ShrinkValue
+		FVector ShrinkDir = (Center - TargetSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World)).
+			GetSafeNormal() * ShrinkValue;
+		const FInterpCurveVector& PositionCurve = TargetSpline->SplineCurves.Position;
+		const FInterpCurvePoint<FVector>& PointLoc=PositionCurve.Points[i];
+		//PointLoc+=ShrinkDir;
+	}
+}

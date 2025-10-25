@@ -1016,7 +1016,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 			if (TargetSpline->GetSplinePointType(ControlPointIndex) == ESplinePointType::Linear && i > 0 &&
 				i < PolyLineLengths.Num() - 1)
 			{
-				LinearControlPointIndexes.Emplace(i);
+				LinearControlPointIndexes.Add(i);
 			}
 		}
 	}
@@ -1050,7 +1050,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 					PolyLineLengths[ControlPointIndex] - AdditionalSampleDistance,
 					ESplineCoordinateSpace::World,
 					true);
-				InterplatePointsOnControlPoints.Emplace(ControlPointIndex - 1).Emplace(LastTransform);
+				InterplatePointsOnControlPoints.Emplace(ControlPointIndex - 1).Add(LastTransform);
 				InterplateLengthOnSpline.Emplace(ControlPointIndex - 1).Emplace(
 					PolyLineLengths[ControlPointIndex] - AdditionalSampleDistance);
 			}
@@ -1065,8 +1065,8 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 					PolyLineLengths[ControlPointIndex] + AdditionalSampleDistance,
 					ESplineCoordinateSpace::World,
 					true);
-				InterplatePointsOnControlPoints.Emplace(ControlPointIndex).Emplace(NextTransform);
-				InterplateLengthOnSpline.Emplace(ControlPointIndex).Emplace(
+				InterplatePointsOnControlPoints.Add(ControlPointIndex).Add(NextTransform);
+				InterplateLengthOnSpline.Add(ControlPointIndex).Emplace(
 					PolyLineLengths[ControlPointIndex] + AdditionalSampleDistance);
 			}
 			//FQuat不要使用(A+B)/2计算值不对
@@ -1085,7 +1085,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 		if (PolyLineLengths[i] - PolyLineLengths[i - 1] > SegmentMaxDisThreshold)
 		{
 			//以该点为起点的位置需要插入元素
-			SegmentsToSubdivide.Add(i - 1);
+			SegmentsToSubdivide.Emplace(i - 1);
 		}
 	}
 	if (SegmentsToSubdivide.IsEmpty())
@@ -1104,7 +1104,7 @@ TArray<FTransform> URoadGeneratorSubsystem::ResampleSpline(const USplineComponen
 		{
 			float DisToSubdivisionPoint = static_cast<float>(j * TargetSubdivisionLength + PolyLineLengths[
 				SegmentIndex]);
-			TargetSegment.Value.Emplace(
+			TargetSegment.Value.Add(
 				TargetSpline->GetTransformAtDistanceAlongSpline(DisToSubdivisionPoint, ESplineCoordinateSpace::World));
 		}
 	}
