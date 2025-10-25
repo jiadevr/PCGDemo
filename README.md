@@ -11,5 +11,5 @@ PCG学习及作品集
 ## 程序化道路生成
 基于用户输入样条生成道路、交汇路口、街区，使用UEC++实现。
 [[UE5]CitySample复刻计划(2)-纯UECpp下的道路生成](https://www.bilibili.com/opus/1116054145300693027)
-[[UE5]CitySample复刻计划(3)-纯UECpp下的街区生成](https://www.bilibili.com/read/cv43301770)
-
+[[UE5]CitySample复刻计划(3)-纯UECpp下的街区生成](https://www.bilibili.com/read/cv43301770) 
+[[UE5]CitySample复刻计划(4)-街区生成细化中的UDynamicMesh和USplineComponent使用](https://www.bilibili.com/opus/1127339025877696515)
