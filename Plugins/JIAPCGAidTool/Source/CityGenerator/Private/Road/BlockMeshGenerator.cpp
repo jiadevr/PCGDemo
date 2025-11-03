@@ -34,7 +34,7 @@ void UBlockMeshGenerator::SetSweepPath(const TArray<FVector>& InSweepPath)
 	const FTransform OwnerTransform = CompOwner->GetTransform();
 	for (const FVector& PathPoint : InSweepPath)
 	{
-		SweepPath.Emplace(UKismetMathLibrary::InverseTransformLocation(OwnerTransform, PathPoint));
+		ExtrudePath.Emplace(UKismetMathLibrary::InverseTransformLocation(OwnerTransform, PathPoint));
 	}
 }
 
@@ -57,7 +57,7 @@ bool UBlockMeshGenerator::GenerateMesh()
 				TEXT("[ERROR]%s Create Block Failed,Null MeshComp Found!"), *Owner->GetActorLabel()));
 		return false;
 	}
-	if (SweepPath.IsEmpty())
+	if (ExtrudePath.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
 			FString::Printf(
@@ -65,7 +65,7 @@ bool UBlockMeshGenerator::GenerateMesh()
 		return false;
 	}
 
-	TArray<FVector2D> ExtrudeShape = SweepPath;
+	const TArray<FVector2D>& ExtrudeShape = ExtrudePath;
 	if (ExtrudeShape.IsEmpty())
 	{
 		UNotifyUtilities::ShowPopupMsgAtCorner(
@@ -77,9 +77,21 @@ bool UBlockMeshGenerator::GenerateMesh()
 	UDynamicMesh* MeshPtr = MeshComponent->GetDynamicMesh();
 	FGeometryScriptPrimitiveOptions GeometryScriptOptions;
 	FTransform ExtrudeMeshTrans = FTransform::Identity;
-	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendSimpleExtrudePolygon(
-		MeshPtr, GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, 30.0f);
+	//使用AppendDelaunayTriangulation2D方法创建面，提升成面质量
+	TArray<FIntPoint> BorderEdges;
+	GenerateBorderEdgeArray(ExtrudePath, BorderEdges);
+	FGeometryScriptConstrainedDelaunayTriangulationOptions TriangulationOptions;
+	TriangulationOptions.ConstrainedEdgesFillMode = EGeometryScriptPolygonFillMode::Solid;
+	TArray<int32> PositionsToVIDs;
+	bool bHasDuplicateVertices = false;
+	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendDelaunayTriangulation2D(
+		MeshPtr, GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, BorderEdges, TriangulationOptions,
+		PositionsToVIDs,bHasDuplicateVertices);
 
+	FGeometryScriptMeshLinearExtrudeOptions ExtrudeOptions;
+	ExtrudeOptions.Distance=30.0f;
+	FGeometryScriptMeshSelection Selection;
+	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshLinearExtrudeFaces(MeshPtr,ExtrudeOptions,Selection);
 
 	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshPtr);
 	FGeometryScriptSplitNormalsOptions SplitOptions;
@@ -90,8 +102,8 @@ bool UBlockMeshGenerator::GenerateMesh()
 	FGeometryScriptMeshSelection UpFaceSelection;
 	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(MeshPtr, UpFaceSelection);
 	FGeometryScriptMeshInsetOutsetFacesOptions InsetOptions;
-	InsetOptions.Distance = 400.0f;
-	InsetOptions.Softness = 100.0f;
+	InsetOptions.Distance = 300.0f;
+	InsetOptions.Softness = 0.0f;
 	InsetOptions.AreaMode = EGeometryScriptPolyOperationArea::EntireSelection;
 	FGeometryScriptMeshEditPolygroupOptions SplitPolyGroupOptions;
 	//设置的Group对象是挤压的那个面，也就是原选择面，而不是内部挤压新生成的周边面
@@ -167,7 +179,7 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 	RefSpline = Cast<USplineComponent>(SplineCompTemp);
 	RefSpline->ClearSplinePoints();
 	TArray<const FInterpCurvePoint<FVector>*> ControlPoints;
-	
+
 	for (int32 i = 0; i < ControlPointsOfAmongRoads.Num(); ++i)
 	{
 		AdjustTangentValueInline(ControlPointsOfAmongRoads[i]);
@@ -211,6 +223,25 @@ void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
 		MeshComponent->ConfigureMaterialSet(Materials);
 	}
 }
+
+void UBlockMeshGenerator::GenerateBorderEdgeArray(const TArray<FVector2D>& InBorderPoints,
+                                                  TArray<FIntPoint>& OutBorderEdgeArray)
+{
+	OutBorderEdgeArray.Reset();
+	int32 PointCount = InBorderPoints.Num();
+	if (PointCount == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Empty PointArray"))
+		return;
+	}
+	OutBorderEdgeArray.Reserve(PointCount);
+	for (int i = 0; i < PointCount; ++i)
+	{
+		FIntPoint EdgeToNext{i, (i + 1) % PointCount};
+		OutBorderEdgeArray.Add(EdgeToNext);
+	}
+}
+
 #if WITH_EDITOR
 void UBlockMeshGenerator::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {

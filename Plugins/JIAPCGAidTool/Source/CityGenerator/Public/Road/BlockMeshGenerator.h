@@ -34,11 +34,16 @@ public:
 	UFUNCTION(BlueprintCallable, CallInEditor)
 	void GenerateInnerRefSpline();
 
+	UFUNCTION(BlueprintCallable)
+	TArray<FVector2D> GetExtrudePath() const { return ExtrudePath; };
+
 protected:
 	/**
 	 * Block生成挤出截面
 	 */
-	TArray<FVector2D> SweepPath;
+	TArray<FVector2D> ExtrudePath;
+
+	void GenerateBorderEdgeArray(const TArray<FVector2D>& InBorderPoints, TArray<FIntPoint>& OutBorderEdgeArray);
 
 	/**
 	 * BlockComp全局ID
@@ -67,6 +72,6 @@ protected:
 	USplineComponent* RefSpline = nullptr;
 
 	UPROPERTY(EditAnywhere)
-	float SplineShrinkValue=500.0f;
+	float SplineShrinkValue = 500.0f;
 	void AdjustTangentValueInline(FInterpCurve<FVector>& PointGroup);
 };
