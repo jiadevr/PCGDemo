@@ -12,10 +12,14 @@
 #include "GeometryScript/MeshSelectionFunctions.h"
 #include "GeometryScript/MeshModelingFunctions.h"
 #include "GeometryScript/MeshMaterialFunctions.h"
+#include "GeometryScript/MeshPolygroupFunctions.h"
+#include "GeometryScript/MeshRepairFunctions.h"
+#include "GeometryScript/MeshTransformFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 
 int32 UBlockMeshGenerator::BlockGlobalIndex = -1;
+const int32 UBlockMeshGenerator::InnerAreaGroupIndex = 0;
 // Sets default values for this component's properties
 UBlockMeshGenerator::UBlockMeshGenerator()
 {
@@ -86,18 +90,26 @@ bool UBlockMeshGenerator::GenerateMesh()
 	bool bHasDuplicateVertices = false;
 	UGeometryScriptLibrary_MeshPrimitiveFunctions::AppendDelaunayTriangulation2D(
 		MeshPtr, GeometryScriptOptions, ExtrudeMeshTrans, ExtrudeShape, BorderEdges, TriangulationOptions,
-		PositionsToVIDs,bHasDuplicateVertices);
+		PositionsToVIDs, bHasDuplicateVertices);
 
 	FGeometryScriptMeshLinearExtrudeOptions ExtrudeOptions;
-	ExtrudeOptions.Distance=30.0f;
+	//这个值比实际需要的大，因为后边优化阈值是50，太小厚度会被消除
+	ExtrudeOptions.Distance = 100.0f;
 	FGeometryScriptMeshSelection Selection;
-	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshLinearExtrudeFaces(MeshPtr,ExtrudeOptions,Selection);
+	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshLinearExtrudeFaces(MeshPtr, ExtrudeOptions, Selection);
 
 	UGeometryScriptLibrary_MeshNormalsFunctions::AutoRepairNormals(MeshPtr);
 	FGeometryScriptSplitNormalsOptions SplitOptions;
 	FGeometryScriptCalculateNormalsOptions CalculateOptions;
 	UGeometryScriptLibrary_MeshNormalsFunctions::ComputeSplitNormals(MeshPtr, SplitOptions,
 	                                                                 CalculateOptions);
+	//设置统一PolyGroupID
+	FGeometryScriptMeshSelection EntireSelection;
+	UGeometryScriptLibrary_MeshSelectionFunctions::CreateSelectAllMeshSelection(MeshPtr, EntireSelection);
+	FGeometryScriptGroupLayer DefaultGroupLayer;
+	int32 IDOut;
+	UGeometryScriptLibrary_MeshPolygroupFunctions::SetPolygroupForMeshSelection(
+		MeshPtr, DefaultGroupLayer, EntireSelection, IDOut, 2);
 
 	FGeometryScriptMeshSelection UpFaceSelection;
 	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(MeshPtr, UpFaceSelection);
@@ -106,9 +118,9 @@ bool UBlockMeshGenerator::GenerateMesh()
 	InsetOptions.Softness = 0.0f;
 	InsetOptions.AreaMode = EGeometryScriptPolyOperationArea::EntireSelection;
 	FGeometryScriptMeshEditPolygroupOptions SplitPolyGroupOptions;
-	//设置的Group对象是挤压的那个面，也就是原选择面，而不是内部挤压新生成的周边面
+	/*//设置的Group对象是挤压的那个面，也就是原选择面，而不是内部挤压新生成的周边面
 	SplitPolyGroupOptions.GroupMode = EGeometryScriptMeshEditPolygroupMode::AutoGenerateNew;
-	SplitPolyGroupOptions.ConstantGroup = 1;
+	SplitPolyGroupOptions.ConstantGroup = 1;*/
 	InsetOptions.GroupOptions = SplitPolyGroupOptions;
 	UGeometryScriptLibrary_MeshModelingFunctions::ApplyMeshInsetOutsetFaces(MeshPtr, InsetOptions, UpFaceSelection);
 	UGeometryScriptLibrary_MeshMaterialFunctions::EnableMaterialIDs(MeshPtr);
@@ -116,8 +128,13 @@ bool UBlockMeshGenerator::GenerateMesh()
 	FGeometryScriptMeshSelection NewUpFaceSelection;
 	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByNormalAngle(MeshPtr, NewUpFaceSelection);
 	UGeometryScriptLibrary_MeshMaterialFunctions::SetMaterialIDForMeshSelection(MeshPtr, NewUpFaceSelection, 1);
+	UGeometryScriptLibrary_MeshPolygroupFunctions::SetPolygroupForMeshSelection(
+		MeshPtr, DefaultGroupLayer, NewUpFaceSelection, IDOut, 1);
 	//把内部挤压的单独拿出来设置
-	UGeometryScriptLibrary_MeshMaterialFunctions::SetMaterialIDForMeshSelection(MeshPtr, UpFaceSelection, 0);
+	UGeometryScriptLibrary_MeshMaterialFunctions::SetMaterialIDForMeshSelection(
+		MeshPtr, UpFaceSelection, InnerAreaGroupIndex);
+	UGeometryScriptLibrary_MeshPolygroupFunctions::SetPolygroupForMeshSelection(
+		MeshPtr, DefaultGroupLayer, UpFaceSelection, IDOut, InnerAreaGroupIndex);
 
 	//其他不可见的面
 	FGeometryScriptMeshSelection OtherFaceSelection;
@@ -128,6 +145,15 @@ bool UBlockMeshGenerator::GenerateMesh()
 	{
 		InitialMaterials();
 	}
+	//修正拐角处交叉
+	//@TODO:这个方法只能处理部分，后续还是得考虑自定义
+	FGeometryScriptDegenerateTriangleOptions DegenerateTriangleOptions;
+	DegenerateTriangleOptions.MinEdgeLength = 50.0f;
+	DegenerateTriangleOptions.MinTriangleArea = 50.0f;
+	UGeometryScriptLibrary_MeshRepairFunctions::RepairMeshDegenerateGeometry(MeshPtr, DegenerateTriangleOptions);
+
+	//缩放回原始高度
+	UGeometryScriptLibrary_MeshTransformFunctions::ScaleMesh(MeshPtr, FVector(1.0f, 1.0f, 0.3f));
 	RefreshMatsOnDynamicMeshComp();
 	return true;
 }
@@ -214,6 +240,36 @@ void UBlockMeshGenerator::GenerateInnerRefSpline()
 	}
 	RefSpline->SetClosedLoop(true, false);
 	RefSpline->UpdateSpline();
+}
+
+void UBlockMeshGenerator::ExtractLinearContourOfInnerArea()
+{
+	AActor* Owner = MeshComponent->GetOwner();
+	if (nullptr == Owner)
+	{
+		return;
+	}
+	if (!MeshComponent.IsValid())
+	{
+		UNotifyUtilities::ShowPopupMsgAtCorner(
+			FString::Printf(
+				TEXT("[ERROR]%s Create Block Failed,Null MeshComp Found!"), *Owner->GetActorLabel()));
+		return;
+	}
+	TArray<FVector> InnerBorder = GetInnerAreaBorder();
+	FTransform OwnerTransform = Owner->GetTransform();
+	for (const FVector& BorderPoint : InnerBorder)
+	{
+		FVector VertexInWS = UKismetMathLibrary::TransformLocation(OwnerTransform, BorderPoint);
+		DrawDebugPoint(GetWorld(), VertexInWS, 100.0f, FColor::Red, true);
+	}
+
+
+	/*UActorComponent* SplineCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+		Owner, USplineComponent::StaticClass());
+	if (nullptr == SplineCompTemp) { return; }
+	RefSpline = Cast<USplineComponent>(SplineCompTemp);
+	RefSpline->ClearSplinePoints();*/
 }
 
 void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
@@ -324,4 +380,47 @@ void UBlockMeshGenerator::AdjustTangentValueInline(FInterpCurve<FVector>& PointG
 			       *LocWS.ToString(), OriginalDistance, Tangent.Size(), *Tangent.ToString());
 		}
 	}
+}
+
+TArray<FVector> UBlockMeshGenerator::GetInnerAreaBorder()
+{
+	TArray<FVector> BorderPoints;
+	if (!MeshComponent.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Find Null DynamicMeshComp,Return Empty"))
+		return BorderPoints;
+	}
+	UDynamicMesh* BlockMesh = MeshComponent->GetDynamicMesh();
+	if (nullptr == BlockMesh)
+	{
+		return BorderPoints;
+	}
+	int32 SelectElemCount = 0;
+
+	FGeometryScriptGroupLayer GroupLayer;
+	FGeometryScriptMeshSelection InnerFaceSelection;
+	UGeometryScriptLibrary_MeshSelectionFunctions::SelectMeshElementsByPolygroup(
+		BlockMesh, GroupLayer, InnerAreaGroupIndex, InnerFaceSelection);
+	SelectElemCount = InnerFaceSelection.GetNumSelected();
+	UE_LOG(LogTemp, Display, TEXT("Select Triangle %d"), SelectElemCount);
+	FGeometryScriptMeshSelection BoundaryEdges;
+	UGeometryScriptLibrary_MeshSelectionFunctions::SelectSelectionBoundaryEdges(
+		BlockMesh, InnerFaceSelection, BoundaryEdges);
+	SelectElemCount = BoundaryEdges.GetNumSelected();
+	UE_LOG(LogTemp, Display, TEXT("Select Edge %d"), SelectElemCount);
+	TArray<int32> EdgeIDs;
+	EGeometryScriptMeshSelectionType SelectionType;
+	UGeometryScriptLibrary_MeshSelectionFunctions::ConvertMeshSelectionToIndexArray(
+		BlockMesh, BoundaryEdges, EdgeIDs, SelectionType);
+	SelectElemCount = EdgeIDs.Num();
+	UE_LOG(LogTemp, Display, TEXT("Select EdgeIndex %d"), SelectElemCount);
+	FDynamicMesh3& Mesh3 = BlockMesh->GetMeshRef();
+	for (int32 i = 0; i < EdgeIDs.Num() - 1; ++i)
+	{
+		FVector3d Start;
+		FVector3d End;
+		Mesh3.GetEdgeV(EdgeIDs[i], Start, End);
+		BorderPoints.Add(Start);
+	}
+	return BorderPoints;
 }

@@ -34,6 +34,9 @@ public:
 	UFUNCTION(BlueprintCallable, CallInEditor)
 	void GenerateInnerRefSpline();
 
+	UFUNCTION(BlueprintCallable, CallInEditor)
+	void ExtractLinearContourOfInnerArea();
+
 	UFUNCTION(BlueprintCallable)
 	TArray<FVector2D> GetExtrudePath() const { return ExtrudePath; };
 
@@ -74,4 +77,8 @@ protected:
 	UPROPERTY(EditAnywhere)
 	float SplineShrinkValue = 500.0f;
 	void AdjustTangentValueInline(FInterpCurve<FVector>& PointGroup);
+
+	const static int32 InnerAreaGroupIndex;
+
+	TArray<FVector> GetInnerAreaBorder();
 };
