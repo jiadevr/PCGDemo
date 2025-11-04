@@ -188,6 +188,36 @@ double URoadGeometryUtilities::GetAreaOfSortedPoints(const TArray<FVector2D>& So
 	return FMath::Abs(Area);
 }
 
+void URoadGeometryUtilities::SimplifySplinePointsInline(TArray<FVector>& SplinePoints, bool bIgnoreZ)
+{
+	const int32 OriginalNum = SplinePoints.Num();
+	if (SplinePoints.Num() < 3)
+	{
+		return;
+	}
+	//0.044对应sin(2.5),0.087对应sin(5.0)
+	const double ParallelThreshold = 0.044;
+	TArray<FVector> SimplifiedPoints;
+	SimplifiedPoints.Reserve(SplinePoints.Num());
+	SimplifiedPoints.Add(SplinePoints[0]);
+	for (int32 i = 1; i < OriginalNum - 1; ++i)
+	{
+		if (!IsParallel(SimplifiedPoints.Last(), SplinePoints[i], SplinePoints[i], SplinePoints[i + 1],
+		                bIgnoreZ, ParallelThreshold))
+		{
+			SimplifiedPoints.Add(SplinePoints[i]);
+		}
+	}
+	SimplifiedPoints.Add(SplinePoints.Last());
+	//检查最后一个段方向是否和第一段重合
+	if (SimplifiedPoints.Num() > 3 && IsParallel(SimplifiedPoints.Last(), SplinePoints[0], SplinePoints[0],
+	                                             SplinePoints[1], bIgnoreZ, ParallelThreshold))
+	{
+		SimplifiedPoints.RemoveAtSwap(0, 1, EAllowShrinking::Default);
+	}
+	SplinePoints = MoveTemp(SimplifiedPoints);
+}
+
 void URoadGeometryUtilities::ShrinkLoopSpline(const USplineComponent* TargetSpline, float ShrinkValue)
 {
 	//主要问题在于如何定义收缩
@@ -216,7 +246,25 @@ void URoadGeometryUtilities::ShrinkLoopSpline(const USplineComponent* TargetSpli
 		FVector ShrinkDir = (Center - TargetSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World)).
 			GetSafeNormal() * ShrinkValue;
 		const FInterpCurveVector& PositionCurve = TargetSpline->SplineCurves.Position;
-		const FInterpCurvePoint<FVector>& PointLoc=PositionCurve.Points[i];
+		const FInterpCurvePoint<FVector>& PointLoc = PositionCurve.Points[i];
 		//PointLoc+=ShrinkDir;
 	}
+}
+
+bool URoadGeometryUtilities::IsParallel(const FVector& LineAStart, const FVector& LineAEnd, const FVector& LineBStart,
+                                        const FVector& LineBEnd, bool bIgnoreZ, const double Tolerance)
+{
+	//使用DistLine3Line3.h::Line59中的判别方法
+	FVector LineADir = (LineAEnd - LineAStart);
+	FVector LineBDir = (LineBEnd - LineBStart);
+	if (bIgnoreZ)
+	{
+		LineADir.Z = 0.0;
+		LineBDir.Z = 0.0;
+	}
+	LineADir = LineADir.GetSafeNormal();
+	LineBDir = LineBDir.GetSafeNormal();
+	const double a01 = LineADir.Dot(LineBDir);
+	const double det = FMath::Abs(1 - a01 * a01);
+	return det < FMath::Abs(Tolerance);
 }

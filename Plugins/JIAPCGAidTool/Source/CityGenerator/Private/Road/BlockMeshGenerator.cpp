@@ -16,6 +16,7 @@
 #include "GeometryScript/MeshRepairFunctions.h"
 #include "GeometryScript/MeshTransformFunctions.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Road/RoadGeometryUtilities.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 
 int32 UBlockMeshGenerator::BlockGlobalIndex = -1;
@@ -258,18 +259,33 @@ void UBlockMeshGenerator::ExtractLinearContourOfInnerArea()
 	}
 	TArray<FVector> InnerBorder = GetInnerAreaBorder();
 	FTransform OwnerTransform = Owner->GetTransform();
+	/*for (const FVector& BorderPoint : InnerBorder)
+	{
+		FVector VertexInWS = UKismetMathLibrary::TransformLocation(OwnerTransform, BorderPoint);
+		DrawDebugSphere(GetWorld(), VertexInWS, 50.0f, 8, FColor::Red, true, -1, 0, 5.0f);
+	}*/
+	URoadGeometryUtilities::SimplifySplinePointsInline(InnerBorder, true);
+	/*
 	for (const FVector& BorderPoint : InnerBorder)
 	{
 		FVector VertexInWS = UKismetMathLibrary::TransformLocation(OwnerTransform, BorderPoint);
-		DrawDebugPoint(GetWorld(), VertexInWS, 100.0f, FColor::Red, true);
+		DrawDebugSphere(GetWorld(), VertexInWS + FVector::UpVector * 20.0f, 50.0f, 8, FColor::Blue, true, -1, 0, 5.0f);
+	}*/
+	TArray<FSplinePoint> SimplifiedPoints;
+	for (int32 i = 0; i < InnerBorder.Num(); ++i)
+	{
+		SimplifiedPoints.Emplace(i, InnerBorder[i], ESplinePointType::Linear);
 	}
-
-
-	/*UActorComponent* SplineCompTemp = UEditorComponentUtilities::AddComponentInEditor(
+	if (SimplifiedPoints.IsEmpty())
+	{
+		return;
+	}
+	UActorComponent* SplineCompTemp = UEditorComponentUtilities::AddComponentInEditor(
 		Owner, USplineComponent::StaticClass());
 	if (nullptr == SplineCompTemp) { return; }
 	RefSpline = Cast<USplineComponent>(SplineCompTemp);
-	RefSpline->ClearSplinePoints();*/
+	RefSpline->ClearSplinePoints();
+	RefSpline->AddPoints(SimplifiedPoints);
 }
 
 void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
@@ -412,6 +428,8 @@ TArray<FVector> UBlockMeshGenerator::GetInnerAreaBorder()
 	EGeometryScriptMeshSelectionType SelectionType;
 	UGeometryScriptLibrary_MeshSelectionFunctions::ConvertMeshSelectionToIndexArray(
 		BlockMesh, BoundaryEdges, EdgeIDs, SelectionType);
+	//使用DelaunayTriangulation算法构建边界之后返回的是按三角形顺序，但因为传进去的时候有序，这里依然可以使用有序特性把值取回来
+	EdgeIDs.Sort();
 	SelectElemCount = EdgeIDs.Num();
 	UE_LOG(LogTemp, Display, TEXT("Select EdgeIndex %d"), SelectElemCount);
 	FDynamicMesh3& Mesh3 = BlockMesh->GetMeshRef();
