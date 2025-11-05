@@ -188,34 +188,85 @@ double URoadGeometryUtilities::GetAreaOfSortedPoints(const TArray<FVector2D>& So
 	return FMath::Abs(Area);
 }
 
-void URoadGeometryUtilities::SimplifySplinePointsInline(TArray<FVector>& SplinePoints, bool bIgnoreZ)
+void URoadGeometryUtilities::SimplifySplinePointsInline(TArray<FVector>& SplinePoints, bool bIgnoreZ,
+                                                        const float DisThreshold, const float AngleThreshold)
 {
 	const int32 OriginalNum = SplinePoints.Num();
 	if (SplinePoints.Num() < 3)
 	{
 		return;
 	}
-	//0.044对应sin(2.5),0.087对应sin(5.0)
-	const double ParallelThreshold = 0.044;
-	TArray<FVector> SimplifiedPoints;
-	SimplifiedPoints.Reserve(SplinePoints.Num());
-	SimplifiedPoints.Add(SplinePoints[0]);
-	for (int32 i = 1; i < OriginalNum - 1; ++i)
+	//角度计算中使用了Normalize，需要计算开方、除法，计算成本比较高，先算距离剔除，后面还可以缓存距离
+	//剔除圆弧处细分点
+	const double LengthThresholdSquared = DisThreshold * DisThreshold;
+	TArray<FVector> PointsAfterDisSimplification;
+	PointsAfterDisSimplification.Reserve(OriginalNum);
+	//双指针查找圆弧细分段
+	int32 LeftIndex = 0;
+	while (LeftIndex < OriginalNum)
 	{
-		if (!IsParallel(SimplifiedPoints.Last(), SplinePoints[i], SplinePoints[i], SplinePoints[i + 1],
+		int32 RightIndex = LeftIndex;
+		while (RightIndex < OriginalNum - 1)
+		{
+			const double SegmentLengthSquared = bIgnoreZ
+				                                    ? FVector::DistSquaredXY(
+					                                    SplinePoints[RightIndex], SplinePoints[RightIndex + 1])
+				                                    : FVector::DistSquared(
+					                                    SplinePoints[RightIndex], SplinePoints[RightIndex + 1]);
+			if (SegmentLengthSquared > LengthThresholdSquared)
+			{
+				break;
+			}
+			RightIndex++;
+		}
+		// 对找到的圆弧细分段用首尾点简化
+		if (RightIndex > LeftIndex)
+		{
+			PointsAfterDisSimplification.Add(SplinePoints[LeftIndex]);
+			LeftIndex = RightIndex;
+			continue;
+		}
+		// 单个长线段
+		PointsAfterDisSimplification.Add(SplinePoints[LeftIndex]);
+		LeftIndex++;
+	}
+	// 添加最后一个点
+	if (PointsAfterDisSimplification.Last() != SplinePoints.Last())
+	{
+		PointsAfterDisSimplification.Add(SplinePoints.Last());
+	}
+	// 检查简化结果，如果删的太狠就直接返回
+	if (PointsAfterDisSimplification.Num() < 3)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DISTANCE SIMPLIFICATION RESULTED IN TOO FEW POINTS, ABANDON ANGLE FILTER"));
+		SplinePoints = MoveTemp(PointsAfterDisSimplification);
+		return; 
+	}
+	//0.044对应sin(2.5),0.087对应sin(5.0)
+	const double ParallelThreshold = FMath::Sin(FMath::DegreesToRadians(AngleThreshold));
+	TArray<FVector> PointsAfterAngleSimplification;
+	PointsAfterAngleSimplification.Reserve(PointsAfterDisSimplification.Num());
+	PointsAfterAngleSimplification.Add(PointsAfterDisSimplification[0]);
+	for (int32 i = 1; i < PointsAfterDisSimplification.Num() - 1; ++i)
+	{
+		if (!IsParallel(PointsAfterAngleSimplification.Last(), PointsAfterDisSimplification[i],
+		                PointsAfterDisSimplification[i], PointsAfterDisSimplification[i + 1],
 		                bIgnoreZ, ParallelThreshold))
 		{
-			SimplifiedPoints.Add(SplinePoints[i]);
+			PointsAfterAngleSimplification.Add(PointsAfterDisSimplification[i]);
 		}
 	}
-	SimplifiedPoints.Add(SplinePoints.Last());
+	PointsAfterAngleSimplification.Add(PointsAfterDisSimplification.Last());
 	//检查最后一个段方向是否和第一段重合
-	if (SimplifiedPoints.Num() > 3 && IsParallel(SimplifiedPoints.Last(), SplinePoints[0], SplinePoints[0],
-	                                             SplinePoints[1], bIgnoreZ, ParallelThreshold))
+	if (PointsAfterAngleSimplification.Num() > 3 && IsParallel(PointsAfterAngleSimplification.Last(),
+	                                                           PointsAfterDisSimplification[0],
+	                                                           PointsAfterDisSimplification[0],
+	                                                           PointsAfterDisSimplification[1], bIgnoreZ,
+	                                                           ParallelThreshold))
 	{
-		SimplifiedPoints.RemoveAtSwap(0, 1, EAllowShrinking::Default);
+		PointsAfterAngleSimplification.RemoveAtSwap(0, 1, EAllowShrinking::Default);
 	}
-	SplinePoints = MoveTemp(SimplifiedPoints);
+	SplinePoints = MoveTemp(PointsAfterAngleSimplification);
 }
 
 void URoadGeometryUtilities::ShrinkLoopSpline(const USplineComponent* TargetSpline, float ShrinkValue)

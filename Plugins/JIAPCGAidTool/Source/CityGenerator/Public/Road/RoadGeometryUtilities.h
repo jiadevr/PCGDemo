@@ -56,10 +56,11 @@ public:
 	 */
 	static double GetAreaOfSortedPoints(const TArray<FVector2D>& SortedVertex);
 
-	static void SimplifySplinePointsInline(TArray<FVector>& SplinePoints, bool bIgnoreZ = true);
+	static void SimplifySplinePointsInline(TArray<FVector>& SplinePoints, bool bIgnoreZ = true,
+	                                       const float DisThreshold = 200.0f, const float AngleThreshold = 2.5f);
 
 	static void ShrinkLoopSpline(const USplineComponent* TargetSpline, float ShrinkValue);
 
 	static bool IsParallel(const FVector& LineAStart, const FVector& LineAEnd, const FVector& LineBStart,
-	                       const FVector& LineBEnd, bool bIgnoreZ = true,const double Tolerance=1e-08);
+	                       const FVector& LineBEnd, bool bIgnoreZ = true, const double Tolerance = 1e-08);
 };
