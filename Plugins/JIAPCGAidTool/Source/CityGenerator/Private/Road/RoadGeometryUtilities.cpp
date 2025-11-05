@@ -240,7 +240,7 @@ void URoadGeometryUtilities::SimplifySplinePointsInline(TArray<FVector>& SplineP
 	{
 		UE_LOG(LogTemp, Warning, TEXT("DISTANCE SIMPLIFICATION RESULTED IN TOO FEW POINTS, ABANDON ANGLE FILTER"));
 		SplinePoints = MoveTemp(PointsAfterDisSimplification);
-		return; 
+		return;
 	}
 	//0.044对应sin(2.5),0.087对应sin(5.0)
 	const double ParallelThreshold = FMath::Sin(FMath::DegreesToRadians(AngleThreshold));
@@ -318,4 +318,101 @@ bool URoadGeometryUtilities::IsParallel(const FVector& LineAStart, const FVector
 	const double a01 = LineADir.Dot(LineBDir);
 	const double det = FMath::Abs(1 - a01 * a01);
 	return det < FMath::Abs(Tolerance);
+}
+
+void URoadGeometryUtilities::ResolveTwistySplineSegments(USplineComponent* TargetSpline, bool bTrimAtIntersection)
+{
+	//能发生扭曲的是k和k+2相对位置颠倒的，对应[k，k+1]和[k+2,K+3]所在分段发生交叉，所以样条至少需要4个顶点
+	const int32 SplinePointNum = TargetSpline->GetNumberOfSplinePoints();
+	if (4 > SplinePointNum)
+	{
+		return;
+	}
+	TArray<int32> TwistyIndexes;
+	TArray<FVector> ModifiedLocations;
+	//这个基本就是为Spline上有4个点这种特例准备的
+	TMap<int32, int32> Visited;
+	for (int32 i = 0; i < SplinePointNum - 1; i++)
+	{
+		//const int32 FirstSegmentStartIndex = i;
+		const FVector FirstSegmentStart =
+			TargetSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
+		const int32 FirstSegmentEndIndex = i + 1;
+		const FVector FirstSegmentEnd =
+			TargetSpline->GetLocationAtSplinePoint(FirstSegmentEndIndex, ESplineCoordinateSpace::World);
+		const int32 SecondSegmentStartIndex = (i + 2) % SplinePointNum;
+		const FVector SecondSegmentStart =
+			TargetSpline->GetLocationAtSplinePoint(SecondSegmentStartIndex, ESplineCoordinateSpace::World);
+		const int32 SecondSegmentEndIndex = (i + 3) % SplinePointNum;
+		const FVector SecondSegmentEnd =
+			TargetSpline->GetLocationAtSplinePoint(SecondSegmentEndIndex, ESplineCoordinateSpace::World);
+		int32 VisitedKey = (i == SplinePointNum - 2 ? i : i < SecondSegmentStartIndex ? i : SecondSegmentStartIndex);
+		if (Visited.Contains(VisitedKey))
+		{
+			continue;
+		}
+		FVector2D Intersection;
+		if (!Get2DIntersection(FVector2D(FirstSegmentStart), FVector2D(FirstSegmentEnd), FVector2D(SecondSegmentStart),
+		                       FVector2D(SecondSegmentEnd), Intersection))
+		{
+			continue;
+		}
+		Visited.Add(VisitedKey, SecondSegmentStartIndex);
+		TwistyIndexes.Add(VisitedKey);
+		if (bTrimAtIntersection)
+		{
+			ModifiedLocations.Emplace(FVector(Intersection, 0.5 * FirstSegmentEnd.Z + 0.5 * SecondSegmentStart.Z));
+		}
+	}
+	if (TwistyIndexes.IsEmpty())
+	{
+		return;
+	}
+	if (bTrimAtIntersection)
+	{
+		ensureMsgf(TwistyIndexes.Num()==ModifiedLocations.Num(), TEXT("InValid Trim Param"));
+	}
+	//反向遍历否则前边的顺序会被打乱
+	for (int32 i = TwistyIndexes.Num() - 1; i >= 0; --i)
+	{
+		const int32& TargetIndex = TwistyIndexes[i];
+		//点数为4的特例，两条边相互相交
+		if (SplinePointNum == 4 && TargetIndex == SplinePointNum - 2 && Visited[0] == SplinePointNum - 2)
+		{
+			if (bTrimAtIntersection)
+			{
+				TargetSpline->SetLocationAtSplinePoint(1, ModifiedLocations[0], ESplineCoordinateSpace::World, false);
+				TargetSpline->RemoveSplinePoint(2);
+			}
+			else
+			{
+				FVector Location1 = TargetSpline->GetLocationAtSplinePoint(1, ESplineCoordinateSpace::World);
+				TargetSpline->SetLocationAtSplinePoint(
+					1, TargetSpline->GetLocationAtSplinePoint(2, ESplineCoordinateSpace::World),
+					ESplineCoordinateSpace::World, false);
+				TargetSpline->SetLocationAtSplinePoint(
+					2, Location1, ESplineCoordinateSpace::World, true);
+			}
+			return;
+		}
+		int32 MovementIndex = (TwistyIndexes[i] + 2) % SplinePointNum;
+		if (bTrimAtIntersection)
+		{
+			//把自己后边那个删了，把下一组的挪到交点
+			TargetSpline->SetLocationAtSplinePoint(MovementIndex, ModifiedLocations[i], ESplineCoordinateSpace::World,
+			                                       false);
+			TargetSpline->RemoveSplinePoint(TwistyIndexes[i] + 1, false);
+		}
+		else
+		{
+			//交换位置
+			FVector Location1 = TargetSpline->GetLocationAtSplinePoint(TwistyIndexes[i] + 1, ESplineCoordinateSpace::World);
+			TargetSpline->SetLocationAtSplinePoint(
+				TwistyIndexes[i] + 1, TargetSpline->GetLocationAtSplinePoint(MovementIndex, ESplineCoordinateSpace::World),
+				ESplineCoordinateSpace::World, false);
+			TargetSpline->SetLocationAtSplinePoint(
+				MovementIndex, Location1, ESplineCoordinateSpace::World, false);
+		}
+	}
+	TargetSpline->UpdateSpline();
 }

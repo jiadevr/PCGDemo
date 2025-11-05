@@ -285,7 +285,10 @@ void UBlockMeshGenerator::ExtractLinearContourOfInnerArea()
 	if (nullptr == SplineCompTemp) { return; }
 	RefSpline = Cast<USplineComponent>(SplineCompTemp);
 	RefSpline->ClearSplinePoints();
-	RefSpline->AddPoints(SimplifiedPoints);
+	RefSpline->AddPoints(SimplifiedPoints, false);
+	RefSpline->SetClosedLoop(true, false);
+	RefSpline->UpdateSpline();
+	URoadGeometryUtilities::ResolveTwistySplineSegments(RefSpline, true);
 }
 
 void UBlockMeshGenerator::RefreshMatsOnDynamicMeshComp()
