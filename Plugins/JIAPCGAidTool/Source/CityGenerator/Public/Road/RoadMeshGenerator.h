@@ -119,7 +119,7 @@ protected:
 
 	const FString MaterialPath{"/Game/Road/Material/MI/MI_FreewayAsphalt_Road"};
 
-	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/MI_Road"};
+	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/Materials/MI_Road"};
 
 	void GetWSPointFromRoadCenterWithOffset(FVector& PointOnRoadCenter, float DistanceFromStart,
 	                                        const USplineComponent* OwnerSpline, bool bForwardOrderDir,

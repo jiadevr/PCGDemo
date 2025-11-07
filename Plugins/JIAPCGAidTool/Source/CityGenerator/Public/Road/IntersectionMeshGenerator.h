@@ -126,5 +126,5 @@ protected:
 
 	const FString MaterialPath{"/Game/Road/Material/MI/M_Asphalt_Master_Inst_Intersection"};
 
-	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/MI_Intersection"};
+	const FString BackupMaterialPath{"/JIAPCGAidTool/CityGeneratorContent/Materials/MI_Intersection"};
 };

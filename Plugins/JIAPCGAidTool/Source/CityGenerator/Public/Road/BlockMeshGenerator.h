@@ -66,7 +66,7 @@ protected:
 		"/Game/Road/Material/MI/MI_FreewayConcrete_PropsWS02", "/Game/Road/Material/MI/MI_Sidewalk_Plaza_E_WS"
 	};
 	const TArray<FString> BackupMaterialsPath{
-		"/JIAPCGAidTool/CityGeneratorContent/MI_BlockCenter", "/JIAPCGAidTool/CityGeneratorContent/MI_Sidewalk"
+		"/JIAPCGAidTool/CityGeneratorContent/Materials/MI_BlockCenter", "/JIAPCGAidTool/CityGeneratorContent/Materials/MI_Sidewalk"
 	};
 
 	TArray<FInterpCurveVector> ControlPointsOfAmongRoads;
