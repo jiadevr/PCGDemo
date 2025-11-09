@@ -46,7 +46,7 @@ public:
 	}
 
 	UFUNCTION(BlueprintCallable, Category="BuildingDimensions")
-	FVector GetRandomDimension() const
+	FVector GetRandomHalfDimension() const
 	{
 		FVector Dimension;
 		int32 RandomLengthInM = UKismetMathLibrary::RandomIntegerInRangeFromStream(
@@ -61,7 +61,7 @@ public:
 			RandomStream, MinimalHeightInM, MaximalHeightInM);
 		NormalizeValue(RandomHeightInM, 3);
 		Dimension.Z = RandomHeightInM;
-		Dimension *= 100.0;
+		Dimension *= 50.0;
 		return Dimension;
 	}
 	UFUNCTION(BlueprintCallable,Category="BuildingDimensions")

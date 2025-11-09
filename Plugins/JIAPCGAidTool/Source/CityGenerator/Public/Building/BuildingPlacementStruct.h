@@ -12,19 +12,18 @@ struct FPlaceableBlockEdge
 	float UsedLength;
 };
 
-struct FBuildingInfo
+/*struct FBuildingInfo
 {
-	float Length;
-	float Width;
-	int32 TypeID;
-};
+
+}*/;
 
 USTRUCT()
-struct FPlaceBuilding
+struct FPlacedBuilding
 {
 	GENERATED_BODY()
 	FVector Location;
 	FVector ForwardDir;
-	FBuildingInfo* Building;
+	FVector BuildingExtent;
+	int32 TypeID;
 	int32 OwnerBlockEdgeIndex;
 };
