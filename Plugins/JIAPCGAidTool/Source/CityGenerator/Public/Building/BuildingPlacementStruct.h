@@ -4,8 +4,8 @@
 
 struct FPlaceableBlockEdge
 {
-	FVector StartPoint;
-	FVector EndPoint;
+	FVector StartPointWS;
+	FVector EndPointWS;
 	FVector Direction;
 	float Length;
 	int32 SegmentIndexOfOwnerSpline;

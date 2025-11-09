@@ -5,6 +5,9 @@
 
 #include "NotifyUtilities.h"
 #include "Building/BuildingDimensionsConfig.h"
+#include "Building/BuildingPlacementStruct.h"
+#include "CityGenerator/SplineUtilities.h"
+#include "Components/SplineComponent.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 
 void UBuildingGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -24,12 +27,9 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 	{
 		return;
 	}
-	//1.构造离散PlaceableEdge
-
-	//2.随机生成建筑三维，对建筑维度进行排序，建立大顶堆
+	//1.随机生成建筑三维，对建筑维度进行排序，建立大顶堆
 	TArray<FVector> BuildingsDimensions = GetRandomBuildingConfig();
 	//长度优先，深度第二，高度第三
-	UE_LOG(LogTemp,Display,TEXT("Begin Sort BuildingDimensions"))
 	BuildingsDimensions.Sort([](const FVector& A, const FVector& B)
 	{
 		if (A.X != B.X)
@@ -45,12 +45,36 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 			return A.Y > B.Y;
 		}
 	});
-	UE_LOG(LogTemp,Display,TEXT("End Sort BuildingDimensions"))
+	const float MinX = BuildingsDimensions.Last().X;
+	//2.构造离散PlaceableEdge
+	TArray<FPlaceableBlockEdge> PlaceableEdges;
+	const int32 SplineSegmentNum = TargetSpline->GetNumberOfSplineSegments();
+	for (int i = 0; i < SplineSegmentNum; ++i)
+	{
+		float SegmentLength = USplineUtilities::GetSplineSegmentLength(TargetSpline, i);
+		if (MinX > SegmentLength)
+		{
+			UE_LOG(LogTemp, Display,
+			       TEXT("Spline Segment%d Length(%f) Is Too Small To Place Building,Witch Length Is %f"), i,
+			       SegmentLength, MinX);
+			continue;
+		}
+		FVector StartLocation = TargetSpline->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::World);
+		FVector EndLocation = TargetSpline->GetLocationAtSplinePoint((i + 1) % SplineSegmentNum,
+		                                                             ESplineCoordinateSpace::World);
+		FVector SegmentDir = (EndLocation - StartLocation).GetSafeNormal();
+		PlaceableEdges.Emplace(StartLocation, EndLocation, SegmentDir, SegmentLength, i, 0);
+	}
+	for (const FPlaceableBlockEdge& PlaceableEdge : PlaceableEdges)
+	{
+		UE_LOG(LogTemp, Display, TEXT("SegmentID %d,From%s,To%s Length:%f"), PlaceableEdge.SegmentIndexOfOwnerSpline,
+		       *PlaceableEdge.StartPointWS.ToString(), *PlaceableEdge.EndPointWS.ToString(), PlaceableEdge.Length);
+	}
 	//3.建立局部网格处理碰撞
 	//Sphere空间距离检测、AABB检测、OBB检测
 	//4.处理每条边放置
 	//贪心，01背包问题
-	
+
 	return;
 }
 
