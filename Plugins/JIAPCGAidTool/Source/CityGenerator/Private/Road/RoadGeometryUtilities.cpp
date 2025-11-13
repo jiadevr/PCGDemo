@@ -29,7 +29,7 @@ bool URoadGeometryUtilities::Get2DIntersection(const FVector2D& InSegmentAStart,
 	}
 	//直线参数方程
 	//(X0,Y0)=AStart+t*VectorA=BStart+S*VectorB
-	//使用三角形相似计算比值
+	//这里本质上是求两个线段起点到交点作为边1、2，两线段起点连线作为边3，1、2为底边时面积相等/利用1、2边上的高列等式
 	float t = FVector2D::CrossProduct(VectorABStart, VectorB) / Denominator;
 	float s = FVector2D::CrossProduct(VectorABStart, VectorA) / Denominator;
 
