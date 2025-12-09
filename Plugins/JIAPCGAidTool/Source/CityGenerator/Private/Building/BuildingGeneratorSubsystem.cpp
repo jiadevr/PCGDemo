@@ -6,7 +6,7 @@
 #include "NotifyUtilities.h"
 #include "Building/BuildingDimensionsConfig.h"
 #include "Building/BuildingPlacementStruct.h"
-#include "CityGenerator/SplineUtilities.h"
+#include "CityGenerator/Public/SplineUtilities.h"
 #include "Components/SplineComponent.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 
@@ -72,6 +72,7 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 	}
 	//3.建立局部网格处理碰撞
 	//Sphere空间距离检测、AABB检测、OBB检测
+	
 	//4.处理每条边放置
 	//主要思路：每条边优先放置尺寸较大的对象，且优先用完数组中的元素
 	//贪心，01背包问题
@@ -88,7 +89,7 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 		TSet<int32> UsedID;
 		UsedID.Reserve(BuildingsExtents.Num());
 		TArray<FPlacedBuilding> SelectedBuildings;
-		FVector FacingDir = PlaceableEdge.Direction.Cross(FVector::UpVector);
+		FVector FacingDir = -PlaceableEdge.Direction.Cross(FVector::UpVector);
 		FVector EdgeMidPoint = 0.5 * PlaceableEdge.StartPointWS + 0.5 * PlaceableEdge.EndPointWS;
 		FColor DebugColor{FColor::MakeRandomColor()};
 		DrawDebugDirectionalArrow(TargetSpline->GetWorld(), EdgeMidPoint, EdgeMidPoint + FacingDir * 200.0f, 20.0f,
@@ -135,7 +136,8 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 			{
 				FVector SelectedLocation = GetBuildingLocation(FacingDir, (UsedDistance +
 					                                               BuildingsExtents[SelectedIndex].X),
-				                                               BuildingsExtents[SelectedIndex].Y);
+				                                               BuildingsExtents[SelectedIndex].Y)
+					+ FVector::UpVector * BuildingsExtents[SelectedIndex].Z;
 				UsedDistance += BuildingsExtents[SelectedIndex].X * 2.0;
 				FPlacedBuilding NewSelected{
 					SelectedLocation, FacingDir, BuildingsExtents[SelectedIndex], SelectedIndex,
@@ -159,8 +161,10 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 			DrawDebugSphere(TargetSpline->GetWorld(), SelectedBuilding.Location, 20.0f, 8, DebugColor, true, -1, 0,
 			                5.0f);
 			DrawDebugBox(TargetSpline->GetWorld(), SelectedBuilding.Location, SelectedBuilding.BuildingExtent,
-			             FacingRotator.Quaternion(), DebugColor, true, -1, 0, 10.0f);
-
+			             FacingRotator.Quaternion(), FColor::Black, true, -1, 0, 30.0f);
+			FBox SolidBox(-SelectedBuilding.BuildingExtent, SelectedBuilding.BuildingExtent);
+			FTransform BoxTransform{FacingRotator.Quaternion(), SelectedBuilding.Location};
+			DrawDebugSolidBox(TargetSpline->GetWorld(), SolidBox, DebugColor, BoxTransform, true, -1, 0);
 			UE_LOG(LogTemp, Display, TEXT("Select %dth Element,Extent:%s,TargetSplineLength:%f"),
 			       SelectedBuilding.TypeID, *SelectedBuilding.BuildingExtent.ToString(), PlaceableEdge.Length)
 		}
