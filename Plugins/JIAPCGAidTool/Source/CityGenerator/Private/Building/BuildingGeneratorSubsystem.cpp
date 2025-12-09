@@ -8,6 +8,8 @@
 #include "Building/BuildingPlacementStruct.h"
 #include "CityGenerator/Public/SplineUtilities.h"
 #include "Components/SplineComponent.h"
+#include "Engine/StaticMeshActor.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 
 void UBuildingGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -72,7 +74,7 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 	}
 	//3.建立局部网格处理碰撞
 	//Sphere空间距离检测、AABB检测、OBB检测
-	
+
 	//4.处理每条边放置
 	//主要思路：每条边优先放置尺寸较大的对象，且优先用完数组中的元素
 	//贪心，01背包问题
@@ -94,6 +96,10 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 		FColor DebugColor{FColor::MakeRandomColor()};
 		DrawDebugDirectionalArrow(TargetSpline->GetWorld(), EdgeMidPoint, EdgeMidPoint + FacingDir * 200.0f, 20.0f,
 		                          DebugColor, true, -1, 0, 5.0f);
+		FPlacedBuilding NewSelected{
+			FVector::ZeroVector, FacingDir, FVector::ZeroVector, -1,
+			PlaceableEdge.SegmentIndexOfOwnerSpline
+		};
 		while (UsedDistance < PlaceableEdge.Length - MinimalBuildingLength)
 		{
 			int32 SelectedIndex = INDEX_NONE;
@@ -112,9 +118,14 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 					                                     BuildingsExtents[i].X), BuildingsExtents[i].Y);
 				/*PlaceableEdge.StartPointWS + PlaceableEdge.Direction * (UsedDistance +
 				BuildingsExtents[i].X) + FacingDir * (-BuildingsExtents[i].Y);*/
-				bool bCanPlace = false;
-				//这里需要补充重叠检测信息
-				if (true/*bCanPlace*/)
+				NewSelected.Location=BuildingCenter;
+				NewSelected.BuildingExtent=BuildingsExtents[i];
+				bool bCanPlace = true;
+				for (const FPlacedBuilding& PlacedBuilding : SelectedBuildings)
+				{
+					bCanPlace &= (!NewSelected.IsOverlappedByOtherBuilding(PlacedBuilding));
+				}
+				if (bCanPlace)
 				{
 					float RemainLength = PlaceableEdge.Length - (UsedDistance + BuildingsExtents[i].X * 2.0);
 					//剩余空间不足以放置最小元素
@@ -139,10 +150,9 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 				                                               BuildingsExtents[SelectedIndex].Y)
 					+ FVector::UpVector * BuildingsExtents[SelectedIndex].Z;
 				UsedDistance += BuildingsExtents[SelectedIndex].X * 2.0;
-				FPlacedBuilding NewSelected{
-					SelectedLocation, FacingDir, BuildingsExtents[SelectedIndex], SelectedIndex,
-					PlaceableEdge.SegmentIndexOfOwnerSpline
-				};
+				/*NewSelected.Location = SelectedLocation;
+				NewSelected.BuildingExtent = BuildingsExtents[SelectedIndex];*/
+				NewSelected.TypeID = SelectedIndex;
 				UsedID.Add(SelectedIndex);
 				SelectedBuildings.Add(NewSelected);
 			}
@@ -162,9 +172,10 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(const USplineComponen
 			                5.0f);
 			DrawDebugBox(TargetSpline->GetWorld(), SelectedBuilding.Location, SelectedBuilding.BuildingExtent,
 			             FacingRotator.Quaternion(), FColor::Black, true, -1, 0, 30.0f);
-			FBox SolidBox(-SelectedBuilding.BuildingExtent, SelectedBuilding.BuildingExtent);
+			/*FBox SolidBox(-SelectedBuilding.BuildingExtent, SelectedBuilding.BuildingExtent);
 			FTransform BoxTransform{FacingRotator.Quaternion(), SelectedBuilding.Location};
-			DrawDebugSolidBox(TargetSpline->GetWorld(), SolidBox, DebugColor, BoxTransform, true, -1, 0);
+			DrawDebugSolidBox(TargetSpline->GetWorld(), SolidBox, DebugColor, BoxTransform, true, -1, 0);*/
+			SelectedBuilding.DrawDebugShape(TargetSpline->GetWorld(), DebugColor);
 			UE_LOG(LogTemp, Display, TEXT("Select %dth Element,Extent:%s,TargetSplineLength:%f"),
 			       SelectedBuilding.TypeID, *SelectedBuilding.BuildingExtent.ToString(), PlaceableEdge.Length)
 		}
@@ -190,6 +201,31 @@ TArray<FVector> UBuildingGeneratorSubsystem::GetRandomBuildingConfig(int32 Count
 	return BuildingBoxes;
 }
 
+void UBuildingGeneratorSubsystem::TestOverlappingUsingSelectedMeshBox(const AStaticMeshActor* InA,
+                                                                      const AStaticMeshActor* InB)
+{
+	if (nullptr == InA || nullptr == InB)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Invalid Box Input"));
+		return;
+	}
+	FVector ActorLocation = InA->GetActorLocation();
+	FVector BoundsMax;
+	FVector BoundsMin;
+	InA->GetStaticMeshComponent()->GetLocalBounds(BoundsMin, BoundsMax);
+	FVector BoundingBox=BoundsMax*InA->GetStaticMeshComponent()->GetComponentScale();
+	FPlacedBuilding BoxA(InA->GetActorLocation(), InA->GetActorForwardVector(), BoundingBox);
+	
+	InB->GetStaticMeshComponent()->GetLocalBounds(BoundsMin, BoundsMax);
+	BoundingBox=BoundsMax*InB->GetStaticMeshComponent()->GetComponentScale();
+	FPlacedBuilding BoxB(InB->GetActorLocation(), InB->GetActorForwardVector(), BoundingBox);
+	bool bIsOverlapped = BoxA.IsOverlappedByOtherBuilding(BoxB);
+	if (bIsOverlapped)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Overlapped Building"));
+	}
+}
+
 void UBuildingGeneratorSubsystem::InitialConfigDataAsset()
 {
 	UEditorAssetSubsystem* AssetSubsystem = GEditor->GetEditorSubsystem<UEditorAssetSubsystem>();
@@ -199,4 +235,17 @@ void UBuildingGeneratorSubsystem::InitialConfigDataAsset()
 		BuildingConfig = Cast<UBuildingDimensionsConfig>(BuildingConfigDA);
 	}
 	ensureMsgf(nullptr!=BuildingConfig, TEXT("Load Building Config Failed"));
+}
+
+bool UBuildingGeneratorSubsystem::CanPlaceNewBuilding(const FPlacedBuilding& NewBuilding,
+                                                      const TArray<FPlacedBuilding>& Placed)
+{
+	for (const auto& Existed : Placed)
+	{
+		if (NewBuilding.IsOverlappedByOtherBuilding(Existed))
+		{
+			return false;
+		}
+	}
+	return true;
 }

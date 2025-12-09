@@ -31,7 +31,8 @@ public:
 
 	void SetInnerSplinePoints(const TArray<FInterpCurveVector>& InOrderedControlPoints);
 
-	UFUNCTION(BlueprintCallable, CallInEditor)
+	//DOF
+	UFUNCTION()
 	void GenerateInnerRefSpline();
 
 	UFUNCTION(BlueprintCallable, CallInEditor)
