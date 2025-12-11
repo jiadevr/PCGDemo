@@ -54,6 +54,8 @@ struct FPlacedBuilding
 		FQuat XDir = UKismetMathLibrary::Cross_VectorVector(ForwardDir, FVector::UpVector).ToOrientationQuat();
 		FTransform BoxTransform{XDir, Location};
 		DrawDebugSolidBox(TargetWorld, SolidBox, DebugColor, BoxTransform, true, -1, 0);
+		DrawDebugBox(TargetWorld->GetWorld(), Location, BuildingExtent,
+						 XDir, FColor::Black, true, -1, 0, 30.0f);
 	}
 
 protected:
@@ -80,8 +82,8 @@ protected:
 			//UE_LOG(LogTemp, Display, TEXT("TransResult: %s"),*TransformedVector.ToString());
 			Points[i] += FVector2D(TransformedVector);
 			//UE_LOG(LogTemp, Display, TEXT("FinalResult: %s"),*Points[i].ToString());
-			DrawDebugSphere(GEditor->GetEditorWorldContext().World(), FVector(Points[i], 0.0), 10.0f, 8, FColor::Blue,
-			                true);
+			/*DrawDebugSphere(GEditor->GetEditorWorldContext().World(), FVector(Points[i], 0.0), 10.0f, 8, FColor::Blue,
+			                true);*/
 		}
 		return Points;
 	}
@@ -119,42 +121,6 @@ protected:
 		}
 		UE_LOG(LogTemp, Display, TEXT("Find Intersection By OBB"))
 		return true;
-
-
-		/*//轴分离定律，先求各个轴
-		const FVector2D Axis0Y = FVector2D(ForwardDir);
-		const FVector2D Axis0X = FVector2D(UKismetMathLibrary::Cross_VectorVector(ForwardDir, FVector::UpVector));
-		const FVector2D Axis1Y = FVector2D(OtherBuilding.ForwardDir);
-		const FVector2D Axis1X = FVector2D(
-			UKismetMathLibrary::Cross_VectorVector(OtherBuilding.ForwardDir, FVector::UpVector));
-		for (int i = 0; i < 2; ++i)
-		{
-			//然后求各个边的表示，以Current为坐标中心
-			const double& CurrentYValue = i == 0 ? BuildingExtent.Y : OtherBuilding.BuildingExtent.Y;
-			const double& CurrentXValue = i == 0 ? BuildingExtent.X : OtherBuilding.BuildingExtent.X;
-			TArray<FVector2D> BuildingPoints = i == 0 ? OtherBuilding.GetPointsLocation() : GetPointsLocation();
-			const FVector2D CurrentLocation2D = i == 0 ? FVector2D(Location) : FVector2D(OtherBuilding.Location);
-			double OtherXMin = MAX_dbl;
-			double OtherXMax = -MAX_dbl;
-			double OtherYMin = MAX_dbl;
-			double OtherYMax = -MAX_dbl;
-			const FVector2D& ProjectTargetX = (i == 0 ? Axis0Y : Axis1Y);
-			const FVector2D& ProjectTargetY = (i == 0 ? Axis0X : Axis1X);
-			for (auto& OtherBuildingPoint : BuildingPoints)
-			{
-				OtherBuildingPoint -= CurrentLocation2D;
-				OtherXMax = FMath::Max(UKismetMathLibrary::DotProduct2D(OtherBuildingPoint, ProjectTargetX), OtherXMax);
-				OtherXMin = FMath::Min(UKismetMathLibrary::DotProduct2D(OtherBuildingPoint, ProjectTargetX), OtherXMin);
-				OtherYMax = FMath::Max(UKismetMathLibrary::DotProduct2D(OtherBuildingPoint, ProjectTargetY), OtherYMax);
-				OtherYMin = FMath::Min(UKismetMathLibrary::DotProduct2D(OtherBuildingPoint, ProjectTargetY), OtherYMin);
-			}
-			//这个判断条件有点问题，有误判，只要有一个轴上不相交物体就不相交
-			bool bHasOverlapRange = ((FMath::Abs(OtherXMin) <= CurrentXValue || FMath::Abs(OtherXMax) <= CurrentXValue)
-				&&
-				(FMath::Abs(OtherYMin) <= CurrentYValue || FMath::Abs(OtherYMax) <= CurrentYValue));
-			if (!bHasOverlapRange) { return false; }
-		}
-		return true;*/
 	}
 
 public:
