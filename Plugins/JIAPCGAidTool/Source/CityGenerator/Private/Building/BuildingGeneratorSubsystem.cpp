@@ -81,20 +81,26 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(USplineComponent* Tar
 	}
 	//测试
 
-	LastOperatorSpline = TWeakObjectPtr<USplineComponent>(TargetSpline);
+	/*LastOperatorSpline = TWeakObjectPtr<USplineComponent>(TargetSpline);
 
 	if (!PlaceableEdges.IsEmpty())
 	{
 		CurrentEdgeIndex = 0;
 		PlaceableEdges_Test = PlaceableEdges;
 		BuildingsExtentArray = BuildingsExtents;
-	}
-
+	}*/
 
 	//3.处理每条边放置
 	//主要思路：每条边优先放置尺寸较大的对象，且优先用完数组中的元素
 	//贪心，01背包问题
 	//如果想把大的放在中间在边结构里嵌入一个树，分左右，每次尽量往中间放，然后用选择回退-备忘录优化
+	TArray<FPlacedBuilding> SelectedBuildings;
+	for (int i = 0; i < PlaceableEdges.Num(); ++i)
+	{
+		PlaceBuildingsAtEdge(PlaceableEdges, i, BuildingsExtents, SelectedBuildings);
+	}
+
+
 	/*
 		for (FPlaceableBlockEdge& PlaceableEdge : PlaceableEdges)
 		{
@@ -250,7 +256,7 @@ void UBuildingGeneratorSubsystem::TestOverlappingUsingSelectedMeshBox(const ASta
 	}
 }
 
-void UBuildingGeneratorSubsystem::TestAddABuilding()
+/*void UBuildingGeneratorSubsystem::TestAddABuilding()
 {
 	if (!LastOperatorSpline.IsValid() || !PlaceableEdges_Test.IsValidIndex(CurrentEdgeIndex)) { return; }
 	FPlaceableBlockEdge& TargetBlockEdge = PlaceableEdges_Test[CurrentEdgeIndex];
@@ -357,9 +363,9 @@ void UBuildingGeneratorSubsystem::TestAddABuilding()
 		UE_LOG(LogCityGenerator, Warning, TEXT("Switch To Next Edge"))
 		//粗略计算死区，避免以为和旁边建筑交叉导致无法放置
 		CurrentEdgeIndex++;
-		if (CurrentEdgeIndex>=PlaceableEdges_Test.Num())
+		if (CurrentEdgeIndex >= PlaceableEdges_Test.Num())
 		{
-			UE_LOG(LogCityGenerator,Display,TEXT("Finish Building Generator"))
+			UE_LOG(LogCityGenerator, Display, TEXT("Finish Building Generator"))
 			return;
 		}
 		DistanceUsedInSingleLine = GetDeadLength(PlaceableEdges_Test, CurrentEdgeIndex, PlacedBuildingsGlobal);
@@ -367,6 +373,119 @@ void UBuildingGeneratorSubsystem::TestAddABuilding()
 		MarkLocationOnEdge(PlaceableEdges_Test[CurrentEdgeIndex], DistanceUsedInSingleLine, DebugColorOfSingleLine);
 		UsedIDInSingleLine.Reset();
 	}
+}*/
+
+void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBlockEdge>& InAllEdges,
+                                                       int32 InTargetEdgeIndex,
+                                                       const TArray<FVector>& InAllBuildingExtent,
+                                                       TArray<FPlacedBuilding>& PlacedBuildings)
+{
+	ensureMsgf(InAllEdges.IsValidIndex(InTargetEdgeIndex), TEXT("[CityGenerator]InValid TargetIndex"));
+	int32 BuildingCountBeforeAdding = PlacedBuildings.Num();
+	//信息准备
+	const FColor EdgeDebugColor = FColor::MakeRandomColor();
+	const FPlaceableBlockEdge& TargetBlockEdge = InAllEdges[InTargetEdgeIndex];
+	auto GetBuildingLocation = [&TargetBlockEdge](const FVector& FacingDir, float DistanceOfCenter,
+	                                              float InsetOffset)-> FVector
+	{
+		return TargetBlockEdge.StartPointWS + TargetBlockEdge.Direction * DistanceOfCenter + FacingDir * (-InsetOffset);
+	};
+	const FVector FacingDir = -TargetBlockEdge.Direction.Cross(FVector::UpVector);
+	FPlacedBuilding NewSelected{
+		FVector::ZeroVector, FacingDir, FVector::ZeroVector, -1,
+		TargetBlockEdge.SegmentIndexOfOwnerSpline
+	};
+	//标记使用过的ID，尽量不重复
+	TSet<int32> UsedIDs;
+	const float MinimalBuildingLength = InAllBuildingExtent.Last().X * 2.0;
+
+
+	//计算头部死区
+	float UsedLength = GetDeadLength(InAllEdges,InTargetEdgeIndex, PlacedBuildings);
+	//对于最后一段，还有0造成的死区
+	const float EndDeadLength = InTargetEdgeIndex == (InAllEdges.Num() - 1)
+		                            ? GetDeadLength(InAllEdges, InTargetEdgeIndex + 1, PlacedBuildings)
+		                            : 0.0f;
+	while (UsedLength < TargetBlockEdge.Length - MinimalBuildingLength - EndDeadLength)
+	{
+		int32 SelectedIndex = INDEX_NONE;
+		FVector BuildingCenter{0.0};
+		float MinRemainLength = TargetBlockEdge.Length;
+		//遍历尝试，寻找一个最合适的
+		//@TODO：可以用回溯算法配合二分查找获得空余最少的。
+		for (int32 i = 0; i < InAllBuildingExtent.Num(); ++i)
+		{
+			const FVector& TestingExtent = InAllBuildingExtent[i];
+			if (UsedIDs.Contains(i)) { continue; }
+			//尺寸不合适的
+			if (InAllBuildingExtent[i].X * 2.0 > MinRemainLength)
+			{
+				UsedIDs.Add(i);
+				continue;
+			}
+			BuildingCenter = GetBuildingLocation(FacingDir, (UsedLength +
+				                                     TestingExtent.X), TestingExtent.Y);
+			NewSelected.Location = BuildingCenter;
+			NewSelected.BuildingExtent = TestingExtent;
+			bool bCanPlace = true;
+			for (const FPlacedBuilding& PlacedBuilding : PlacedBuildings)
+			{
+				bCanPlace &= !NewSelected.IsOverlappedByOtherBuilding(PlacedBuilding);
+			}
+			if (bCanPlace)
+			{
+				const float RemainLength = TargetBlockEdge.Length - (UsedLength + TestingExtent.X * 2.0);
+				//剩余空间不足以放置最小元素
+				if (RemainLength < MinimalBuildingLength)
+				{
+					SelectedIndex = i;
+					UE_LOG(LogCityGenerator, Display,
+					       TEXT("Select Building,Reason： RemainingLength Smaller Than Threshold"));
+					break;
+				}
+				if (RemainLength < MinRemainLength)
+				{
+					MinRemainLength = RemainLength;
+					SelectedIndex = i;
+				}
+			}
+			else
+			{
+				UE_LOG(LogCityGenerator, Warning,
+				       TEXT("Abort Adding Building Size: %s,Reason: Failed To Pass Collision Test"),
+				       *TestingExtent.ToString())
+			}
+		}
+		if (SelectedIndex != INDEX_NONE)
+		{
+			NewSelected.BuildingExtent = InAllBuildingExtent[SelectedIndex];
+			NewSelected.Location = GetBuildingLocation(FacingDir, (UsedLength +
+				                                           NewSelected.BuildingExtent.X),
+			                                           NewSelected.BuildingExtent.Y) + FVector::UpVector *
+				NewSelected.BuildingExtent.Z;
+
+			MarkLocationOnEdge(InAllEdges[NewSelected.OwnerBlockEdgeIndex], UsedLength,
+			                   EdgeDebugColor);
+			UsedLength += InAllBuildingExtent[SelectedIndex].X * 2.0;
+			NewSelected.TypeID = SelectedIndex;
+			UsedIDs.Add(SelectedIndex);
+			PlacedBuildings.Add(NewSelected);
+			NewSelected.DrawDebugShape(GEditor->GetEditorWorldContext().World(), EdgeDebugColor);
+			UE_LOG(LogCityGenerator, Display, TEXT("Place A New Building[Extent: %s ,At Location %s] :"),
+			       *NewSelected.BuildingExtent.ToString(), *NewSelected.Location.ToString())
+		}
+		else
+		{
+			//全部都尝试过但依然没有合适的，但同时剩余距离还能放，说明会发生重复
+			UE_LOG(LogCityGenerator, Warning,
+			       TEXT("No Alternative BuildingLeft,There Will Spawn Building With Duplicated Size!"))
+			UsedIDs.Reset();
+		}
+	}
+	//剩余位置已经放不下了
+	UE_LOG(LogTemp, Display, TEXT("Finish Placing In Edge Which Index Is %d,Add %d Building(s)"), InTargetEdgeIndex,
+	       PlacedBuildings.Num()-BuildingCountBeforeAdding);
+	return;
 }
 
 
@@ -402,7 +521,7 @@ void UBuildingGeneratorSubsystem::MarkLocationOnEdge(const FPlaceableBlockEdge& 
 	DrawDebugDirectionalArrow(GEditor->GetEditorWorldContext().World(), LineStart, LineEnd, 200.0f, DebugColor, true);
 }
 
-void UBuildingGeneratorSubsystem::ClearPlacedBuildings()
+/*void UBuildingGeneratorSubsystem::ClearPlacedBuildings()
 {
 	FlushPersistentDebugLines(GEditor->GetEditorWorldContext().World());
 	CurrentEdgeIndex = 0;
@@ -410,17 +529,17 @@ void UBuildingGeneratorSubsystem::ClearPlacedBuildings()
 	DistanceUsedInSingleLine = 0.0f;
 	UsedIDInSingleLine.Reset();
 	PlacedBuildingsGlobal.Reset();
-}
+}*/
 
 float UBuildingGeneratorSubsystem::GetDeadLength(const TArray<FPlaceableBlockEdge>& InAllPlaceableEdges,
                                                  int32 InCurrentEdgeIndex,
                                                  const TArray<FPlacedBuilding>& InPlacedBuildings) const
 {
-	if (CurrentEdgeIndex == 0 || InPlacedBuildings.IsEmpty())
+	if (InCurrentEdgeIndex == 0 || InPlacedBuildings.IsEmpty())
 	{
 		return 0.0f;
 	}
-	ensureMsgf(InAllPlaceableEdges.IsValidIndex(CurrentEdgeIndex-1)||(InCurrentEdgeIndex==InAllPlaceableEdges.Num()),
+	ensureMsgf(InAllPlaceableEdges.IsValidIndex(InCurrentEdgeIndex-1)||(InCurrentEdgeIndex==InAllPlaceableEdges.Num()),
 	           TEXT("Passed In Index Is Out Of EdgeArray Range"));
 	//对于常规边死区由上一组最后一个元素造成，对于最后一条边的尾端死区由首元素造成
 	const FPlacedBuilding& DeadLengthMaker = (InCurrentEdgeIndex != InAllPlaceableEdges.Num())
