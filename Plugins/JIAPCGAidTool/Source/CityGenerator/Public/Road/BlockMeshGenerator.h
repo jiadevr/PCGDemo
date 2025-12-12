@@ -30,9 +30,10 @@ public:
 	virtual bool GenerateMesh() override;
 
 	void SetInnerSplinePoints(const TArray<FInterpCurveVector>& InOrderedControlPoints);
-
-	//DOF
-	UFUNCTION()
+	
+	//获取街区轮廓简化Spline
+	//@TODO：有漏删点情况
+	UFUNCTION(BlueprintCallable, CallInEditor)
 	void GenerateInnerRefSpline();
 
 	UFUNCTION(BlueprintCallable, CallInEditor)
