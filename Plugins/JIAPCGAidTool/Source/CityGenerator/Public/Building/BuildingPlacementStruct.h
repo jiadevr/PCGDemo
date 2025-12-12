@@ -9,14 +9,10 @@ struct FPlaceableBlockEdge
 	FVector EndPointWS;
 	FVector Direction;
 	float Length;
+	//这个值可能不连续
 	int32 SegmentIndexOfOwnerSpline;
 	float UsedLength;
 };
-
-/*struct FBuildingInfo
-{
-
-}*/;
 
 USTRUCT(BlueprintType)
 struct FPlacedBuilding
@@ -31,11 +27,19 @@ struct FPlacedBuilding
 		Location(InLocation), ForwardDir(InForward), BuildingExtent(InBuildingExtent), TypeID(InTypeID),
 		OwnerBlockEdgeIndex(InOwnerBlockEdgeIndex)
 	{
+		OBBBox.Center = InLocation;
+		OBBBox.AxisY = InForward;
+		OBBBox.AxisX = UKismetMathLibrary::Cross_VectorVector(InForward, FVector::UpVector);
+		OBBBox.ExtentX = BuildingExtent.X;
+		OBBBox.ExtentY = BuildingExtent.Y;
+		OBBBox.ExtentZ = BuildingExtent.Z;
+		BoundingBox = FBox2D(GetPointsLocation());
 	}
 
 	~FPlacedBuilding()
 	{
 	};
+
 	FVector Location;
 	//垂直于Spline向外
 	FVector ForwardDir;
@@ -44,6 +48,8 @@ struct FPlacedBuilding
 	int32 TypeID;
 	int32 OwnerBlockEdgeIndex;
 
+	FBox2D BoundingBox;
+	FOrientedBox OBBBox;
 
 	void DrawDebugShape(const UWorld* TargetWorld, const FColor DebugColor = FColor::Red) const
 	{
@@ -55,14 +61,7 @@ struct FPlacedBuilding
 		FTransform BoxTransform{XDir, Location};
 		DrawDebugSolidBox(TargetWorld, SolidBox, DebugColor, BoxTransform, true, -1, 0);
 		DrawDebugBox(TargetWorld->GetWorld(), Location, BuildingExtent,
-						 XDir, FColor::Black, true, -1, 0, 30.0f);
-	}
-
-protected:
-	double GetOverlappedSphereRadiusSquared() const
-	{
-		double RadiusSquared = BuildingExtent.X * BuildingExtent.X + BuildingExtent.Y * BuildingExtent.Y;
-		return RadiusSquared;
+		             XDir, FColor::Black, true, -1, 0, 30.0f);
 	}
 
 	TArray<FVector2D> GetPointsLocation() const
@@ -74,7 +73,8 @@ protected:
 		for (int i = 0; i < 4; ++i)
 		{
 			//这个地方需要根据旋转角度扭转
-			FRotator ActorRotator = UKismetMathLibrary::MakeRotFromX(ForwardDir);
+			FVector XDir = UKismetMathLibrary::Cross_VectorVector(ForwardDir, FVector::UpVector);
+			FRotator ActorRotator = UKismetMathLibrary::MakeRotFromX(XDir);
 			FTransform LocalTransform(ActorRotator);
 			//UE_LOG(LogTemp, Display, TEXT("Rotation: %s"),*ActorRotator.ToString());
 			FVector TransformedVector = UKismetMathLibrary::TransformLocation(
@@ -90,43 +90,36 @@ protected:
 
 	bool IsOverlappedInOBB(const FPlacedBuilding& OtherBuilding) const
 	{
-		TArray<FVector2D> ProjectTargetAxis;
-		ProjectTargetAxis.Emplace(FVector2D(ForwardDir));
-		ProjectTargetAxis.Emplace(FVector2D(UKismetMathLibrary::Cross_VectorVector(ForwardDir, FVector::UpVector)));
-		ProjectTargetAxis.Emplace(FVector2D(OtherBuilding.ForwardDir));
-		ProjectTargetAxis.Emplace(FVector2D(
-			UKismetMathLibrary::Cross_VectorVector(OtherBuilding.ForwardDir, FVector::UpVector)));
-
-		TArray<FVector2D> AllPointsOfRec0 = GetPointsLocation();
-		TArray<FVector2D> AllPointsOfRec1 = OtherBuilding.GetPointsLocation();
-		for (int i = 0; i < 4; ++i)
+		//使用UE的封装实现
+		bool bIsOverlapped = true;
+		//对四个轴向分别测试，根据分离轴定律有一条轴上的值不相交即图形不相交
+		TArray<FVector> ProjectionAxisArray;
+		ProjectionAxisArray.Emplace(OBBBox.AxisX);
+		ProjectionAxisArray.Emplace(OBBBox.AxisY);
+		ProjectionAxisArray.Emplace(OtherBuilding.OBBBox.AxisX);
+		ProjectionAxisArray.Emplace(OtherBuilding.OBBBox.AxisY);
+		FFloatInterval ProjectionOfSelf;
+		FFloatInterval ProjectionOfOther;
+		FFloatInterval IntersectionRange;
+		for (const auto& ProjectionAxis : ProjectionAxisArray)
 		{
-			TArray<double> Rec0ProjectResult;
-			TArray<double> Rec1ProjectResult;
-			for (int j = 0; j < 4; ++j)
+			ProjectionOfSelf = OBBBox.Project(ProjectionAxis);
+			ProjectionOfOther = OtherBuilding.OBBBox.Project(ProjectionAxis);
+			//Intersect的构造使用两个分段中小的上限作为新上限，用两个中大的下限作为新下限，当两者不相交的时候会造成下限大于上限，对应Invalide区间
+			IntersectionRange = Intersect(ProjectionOfSelf, ProjectionOfOther);
+			bIsOverlapped &= (IntersectionRange.IsValid());
+			if (!bIsOverlapped)
 			{
-				Rec0ProjectResult.Emplace(UKismetMathLibrary::DotProduct2D(ProjectTargetAxis[i], AllPointsOfRec0[j]));
-				Rec1ProjectResult.Emplace(UKismetMathLibrary::DotProduct2D(ProjectTargetAxis[i], AllPointsOfRec1[j]));
-			}
-			Rec0ProjectResult.Sort();
-			Rec1ProjectResult.Sort();
-			const double& MaxOfRec0 = Rec0ProjectResult.Last();
-			const double& MaxOfRec1 = Rec1ProjectResult.Last();
-			const double& MinOfRec0 = Rec0ProjectResult[0];
-			const double& MinOfRec1 = Rec1ProjectResult[0];
-			if (MaxOfRec0 < MinOfRec1 || MaxOfRec1 < MinOfRec0)
-			{
-				return false;
+				break;
 			}
 		}
-		UE_LOG(LogTemp, Display, TEXT("Find Intersection By OBB"))
-		return true;
+		return bIsOverlapped;
 	}
 
 public:
 	bool IsOverlappedByOtherBuilding(const FPlacedBuilding& OtherBuilding) const
 	{
-		//过滤同一条线上的
+		//过滤同一分段上的，已经使用距离控制不会相交
 		if (OwnerBlockEdgeIndex != -1 && OtherBuilding.OwnerBlockEdgeIndex == OwnerBlockEdgeIndex)
 		{
 			return false;
@@ -142,11 +135,9 @@ public:
 		}
 		UE_LOG(LogTemp, Display,
 		       TEXT("[BuildingGenerator] Potential Intersection Detected!,Fail To Pass Sphere Detection"));
+
 		//然后进行AABB检测，同样做二维平面
-		FBox2D AABBOfOther(OtherBuilding.GetPointsLocation());
-		FBox2D AABBOfCurrent(GetPointsLocation());
-		//直接用API判断,包围盒不相交则不相交
-		if (!AABBOfCurrent.Intersect(AABBOfOther))
+		if (!BoundingBox.Intersect(OtherBuilding.BoundingBox))
 		{
 			return false;
 		}
