@@ -13,6 +13,9 @@
 #include "Subsystems/EditorAssetSubsystem.h"
 
 DEFINE_LOG_CATEGORY(LogCityGenerator)
+static TAutoConsoleVariable<bool> bFillAllEdge(
+	TEXT("CityGenerator.Building.FillAllEdge"), true,TEXT("Switch Fill All Block Edge Or One Edge Per Click"),
+	ECVF_Default);
 
 void UBuildingGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -79,127 +82,28 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(USplineComponent* Tar
 		       PlaceableEdge.SegmentIndexOfOwnerSpline,
 		       *PlaceableEdge.StartPointWS.ToString(), *PlaceableEdge.EndPointWS.ToString(), PlaceableEdge.Length);
 	}
-	/*//测试
-	if (!PlaceableEdges.IsEmpty())
-	{
-		CurrentEdgeIndex = 0;
-		PlaceableEdges_Test = PlaceableEdges;
-		BuildingsExtentArray = BuildingsExtents;
-	}*/
 
 	//3.处理每条边放置
 	//主要思路：每条边优先放置尺寸较大的对象，且优先用完数组中的元素
 	//贪心，01背包问题
 	//如果想把大的放在中间在边结构里嵌入一个树，分左右，每次尽量往中间放，然后用选择回退-备忘录优化
-	TArray<FPlacedBuilding> SelectedBuildings;
-	for (int i = 0; i < PlaceableEdges.Num(); ++i)
+	if (bFillAllEdge.GetValueOnGameThread())
 	{
-		PlaceBuildingsAtEdge(PlaceableEdges, i, BuildingsExtents, SelectedBuildings);
-	}
-
-
-	/*
-		for (FPlaceableBlockEdge& PlaceableEdge : PlaceableEdges)
+		TArray<FPlacedBuilding> SelectedBuildings;
+		for (int i = 0; i < PlaceableEdges.Num(); ++i)
 		{
-			auto GetBuildingLocation = [&PlaceableEdge](const FVector& FacingDir, float DistanceOfCenter,
-			                                            float InsetOffset)-> FVector
-			{
-				return PlaceableEdge.StartPointWS + PlaceableEdge.Direction * DistanceOfCenter + FacingDir * (-InsetOffset);
-			};
-			float UsedDistance = 0.0f;
-			TSet<int32> UsedID;
-			UsedID.Reserve(BuildingsExtents.Num());
-			TArray<FPlacedBuilding> SelectedBuildings;
-			FVector FacingDir = -PlaceableEdge.Direction.Cross(FVector::UpVector);
-			FVector EdgeMidPoint = 0.5 * PlaceableEdge.StartPointWS + 0.5 * PlaceableEdge.EndPointWS;
-			FColor DebugColor{FColor::MakeRandomColor()};
-			DrawDebugDirectionalArrow(TargetSpline->GetWorld(), EdgeMidPoint, EdgeMidPoint + FacingDir * 200.0f, 20.0f,
-			                          DebugColor, true, -1, 0, 5.0f);
-			FPlacedBuilding NewSelected{
-				FVector::ZeroVector, FacingDir, FVector::ZeroVector, -1,
-				PlaceableEdge.SegmentIndexOfOwnerSpline
-			};
-			while (UsedDistance < PlaceableEdge.Length - MinimalBuildingLength)
-			{
-				int32 SelectedIndex = INDEX_NONE;
-				FVector BuildingCenter{0.0};
-				float MinRemainLength = PlaceableEdge.Length;
-				//遍历尝试，寻找一个最合适的
-				for (int32 i = 0; i < BuildingsExtents.Num(); ++i)
-				{
-					if (UsedID.Contains(i)) { continue; }
-					if (BuildingsExtents[i].X * 2.0 > MinRemainLength)
-					{
-						UsedID.Emplace(i);
-						continue;
-					}
-					BuildingCenter = GetBuildingLocation(FacingDir, (UsedDistance +
-						                                     BuildingsExtents[i].X), BuildingsExtents[i].Y);
-					//PlaceableEdge.StartPointWS + PlaceableEdge.Direction * (UsedDistance +
-					//BuildingsExtents[i].X) + FacingDir * (-BuildingsExtents[i].Y);
-					NewSelected.Location = BuildingCenter;
-					NewSelected.BuildingExtent = BuildingsExtents[i];
-					bool bCanPlace = true;
-					for (const FPlacedBuilding& PlacedBuilding : SelectedBuildings)
-					{
-						bCanPlace &= (!NewSelected.IsOverlappedByOtherBuilding(PlacedBuilding));
-					}
-					if (bCanPlace)
-					{
-						float RemainLength = PlaceableEdge.Length - (UsedDistance + BuildingsExtents[i].X * 2.0);
-						//剩余空间不足以放置最小元素
-						if (RemainLength < MinimalBuildingLength)
-						{
-							SelectedIndex = i;
-							break;
-						}
-						if (RemainLength < MinRemainLength)
-						{
-							//选择这个元素
-							MinRemainLength = RemainLength;
-							SelectedIndex = i;
-						}
-						//非最优解
-					}
-				}
-				if (SelectedIndex != INDEX_NONE)
-				{
-					FVector SelectedLocation = GetBuildingLocation(FacingDir, (UsedDistance +
-						                                               BuildingsExtents[SelectedIndex].X),
-					                                               BuildingsExtents[SelectedIndex].Y)
-						+ FVector::UpVector * BuildingsExtents[SelectedIndex].Z;
-					UsedDistance += BuildingsExtents[SelectedIndex].X * 2.0;
-					//NewSelected.Location = SelectedLocation;
-					//NewSelected.BuildingExtent = BuildingsExtents[SelectedIndex];
-					NewSelected.TypeID = SelectedIndex;
-					UsedID.Add(SelectedIndex);
-					SelectedBuildings.Add(NewSelected);
-				}
-				else
-				{
-					//全部都尝试过但依然没有合适的，但同时剩余距离还能放，说明会发生重复
-					UE_LOG(LogTemp, Warning,
-					       TEXT("No Alternative BuildingLeft,There Will Spawn Building With Duplicated Size!"))
-					UsedID.Reset();
-				}
-			}
-			ensureAlways(!SelectedBuildings.IsEmpty());
-			//Debug绘制
-			for (const FPlacedBuilding& SelectedBuilding : SelectedBuildings)
-			{
-				FRotator FacingRotator{UKismetMathLibrary::MakeRotFromX(PlaceableEdge.Direction)};
-				DrawDebugSphere(TargetSpline->GetWorld(), SelectedBuilding.Location, 20.0f, 8, DebugColor, true, -1, 0,
-				                5.0f);
-				DrawDebugBox(TargetSpline->GetWorld(), SelectedBuilding.Location, SelectedBuilding.BuildingExtent,
-				             FacingRotator.Quaternion(), FColor::Black, true, -1, 0, 30.0f);
-				//FBox SolidBox(-SelectedBuilding.BuildingExtent, SelectedBuilding.BuildingExtent);
-				//FTransform BoxTransform{FacingRotator.Quaternion(), SelectedBuilding.Location};
-				//DrawDebugSolidBox(TargetSpline->GetWorld(), SolidBox, DebugColor, BoxTransform, true, -1, 0);
-				SelectedBuilding.DrawDebugShape(TargetSpline->GetWorld(), DebugColor);
-				UE_LOG(LogTemp, Display, TEXT("Select %dth Element,Extent:%s,TargetSplineLength:%f"),
-				       SelectedBuilding.TypeID, *SelectedBuilding.BuildingExtent.ToString(), PlaceableEdge.Length)
-			}
-		}*/
+			PlaceBuildingsAtEdge(PlaceableEdges, i, BuildingsExtents, SelectedBuildings);
+		}
+	}
+	else
+	{
+		if (!PlaceableEdges.IsEmpty())
+		{
+			CurrentEdgeIndex = 0;
+			PlaceableEdges_Test = PlaceableEdges;
+			BuildingsExtentArray = BuildingsExtents;
+		}
+	}
 	return;
 }
 
@@ -221,8 +125,8 @@ TArray<FVector> UBuildingGeneratorSubsystem::GetRandomBuildingConfig(int32 Count
 	return BuildingBoxes;
 }
 
-void UBuildingGeneratorSubsystem::TestOverlappingUsingSelectedMeshBox(const AStaticMeshActor* InA,
-                                                                      const AStaticMeshActor* InB)
+void UBuildingGeneratorSubsystem::Test_OverlappingUsingSelectedMeshBox(const AStaticMeshActor* InA,
+                                                                       const AStaticMeshActor* InB)
 {
 	if (nullptr == InA || nullptr == InB)
 	{
@@ -264,8 +168,13 @@ void UBuildingGeneratorSubsystem::TestOverlappingUsingSelectedMeshBox(const ASta
 	}
 }
 
-void UBuildingGeneratorSubsystem::TestAddABuilding()
+void UBuildingGeneratorSubsystem::Test_PlaceBuildingAtEdgeManually()
 {
+	if (!PlaceableEdges_Test.IsValidIndex(CurrentEdgeIndex))
+	{
+		UE_LOG(LogCityGenerator, Display, TEXT("Invalid Index %d"), CurrentEdgeIndex);
+		return;
+	}
 	int32 NumBeforeAdd = PlacedBuildingsGlobal.Num();
 	PlaceBuildingsAtEdge(PlaceableEdges_Test, CurrentEdgeIndex, BuildingsExtentArray, PlacedBuildingsGlobal);
 	if (PlacedBuildingsGlobal.Num() == NumBeforeAdd)
@@ -325,7 +234,7 @@ void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBl
 
 
 	//计算头部死区
-	float UsedLength = GetDeadLength(InAllEdges, InTargetEdgeIndex, PlacedBuildings) * 1.1;
+	float UsedLength = GetDeadLength(InAllEdges, InTargetEdgeIndex, PlacedBuildings);
 	//MarkLocationOnEdge(InAllEdges[InTargetEdgeIndex], UsedLength, FColor::Black, true, 300.0f);
 	//对于最后一段，还有0造成的死区
 	const float EndDeadLength = InTargetEdgeIndex == (InAllEdges.Num() - 1)
@@ -336,7 +245,7 @@ void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBl
 	{
 		int32 SelectedIndex = INDEX_NONE;
 		FVector BuildingCenter{0.0};
-		float MinRemainLength = TargetBlockEdge.Length;
+		float MinRemainLength = TargetBlockEdge.Length - UsedLength;
 		//遍历尝试，寻找一个最合适的
 		//@TODO：可以用回溯算法配合二分查找获得空余最少的。
 		for (int32 i = 0; i < InAllBuildingExtent.Num(); ++i)
@@ -447,9 +356,6 @@ void UBuildingGeneratorSubsystem::ClearPlacedBuildings()
 {
 	FlushPersistentDebugLines(GEditor->GetEditorWorldContext().World());
 	CurrentEdgeIndex = 0;
-	//DebugColorOfSingleLine = FColor::Red;
-	//DistanceUsedInSingleLine = 0.0f;
-	//UsedIDInSingleLine.Reset();
 	PlacedBuildingsGlobal.Reset();
 }
 
