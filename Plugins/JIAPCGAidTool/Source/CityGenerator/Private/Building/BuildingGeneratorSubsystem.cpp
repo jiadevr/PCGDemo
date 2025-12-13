@@ -79,23 +79,23 @@ void UBuildingGeneratorSubsystem::PlaceBuildingAlongSpline(USplineComponent* Tar
 		       PlaceableEdge.SegmentIndexOfOwnerSpline,
 		       *PlaceableEdge.StartPointWS.ToString(), *PlaceableEdge.EndPointWS.ToString(), PlaceableEdge.Length);
 	}
-	//测试
+	/*//测试
 	if (!PlaceableEdges.IsEmpty())
 	{
 		CurrentEdgeIndex = 0;
 		PlaceableEdges_Test = PlaceableEdges;
 		BuildingsExtentArray = BuildingsExtents;
-	}
+	}*/
 
 	//3.处理每条边放置
 	//主要思路：每条边优先放置尺寸较大的对象，且优先用完数组中的元素
 	//贪心，01背包问题
 	//如果想把大的放在中间在边结构里嵌入一个树，分左右，每次尽量往中间放，然后用选择回退-备忘录优化
-	/*TArray<FPlacedBuilding> SelectedBuildings;
+	TArray<FPlacedBuilding> SelectedBuildings;
 	for (int i = 0; i < PlaceableEdges.Num(); ++i)
 	{
 		PlaceBuildingsAtEdge(PlaceableEdges, i, BuildingsExtents, SelectedBuildings);
-	}*/
+	}
 
 
 	/*
@@ -321,7 +321,7 @@ void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBl
 	//标记使用过的ID，尽量不重复
 	TSet<int32> UsedIDs;
 	const float MinimalBuildingLength = InAllBuildingExtent.Last().X * 2.0;
-	int32 MaxTryCount = 100;
+	int32 MaxTryCount = InAllBuildingExtent.Num();
 
 
 	//计算头部死区
@@ -389,7 +389,8 @@ void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBl
 				                                           NewSelected.BuildingExtent.X),
 			                                           NewSelected.BuildingExtent.Y) + FVector::UpVector *
 				NewSelected.BuildingExtent.Z;
-
+			//因为前面初始化的时候初始化Extent为0，在这里需要更新碰撞信息
+			NewSelected.RefreshCollisionInfo();
 			MarkLocationOnEdge(InAllEdges[InTargetEdgeIndex], UsedLength, EdgeDebugColor);
 			UsedLength += InAllBuildingExtent[SelectedIndex].X * 2.0;
 			NewSelected.TypeID = SelectedIndex;
@@ -462,10 +463,23 @@ float UBuildingGeneratorSubsystem::GetDeadLength(const TArray<FPlaceableBlockEdg
 	}
 	ensureMsgf(InAllPlaceableEdges.IsValidIndex(InCurrentEdgeIndex-1)||(InCurrentEdgeIndex==InAllPlaceableEdges.Num()),
 	           TEXT("Passed In Index Is Out Of EdgeArray Range"));
-	//对于常规边死区由上一组最后一个元素造成，对于最后一条边的尾端死区由首元素造成
-	const FPlacedBuilding& DeadLengthMaker = (InCurrentEdgeIndex != InAllPlaceableEdges.Num())
-		                                         ? InPlacedBuildings.Last()
-		                                         : InPlacedBuildings[0];
+	//对于常规边死区由上一组最后一个元素造成，对于最后一条边的尾端死区由首元素造成。
+	//还需要考虑一种情况，最后一个元素往往更小，由它投影产生的距离可能不足以避过倒数第二个建筑
+	FPlacedBuilding DeadLengthMaker = (InCurrentEdgeIndex != InAllPlaceableEdges.Num())
+		                                  ? InPlacedBuildings.Last()
+		                                  : InPlacedBuildings[0];
+	if (InPlacedBuildings.Num() > 2)
+	{
+		int32 NeighbourIndex = (InCurrentEdgeIndex != InAllPlaceableEdges.Num()) ? InPlacedBuildings.Num() - 2 : 1;
+		if (InPlacedBuildings.IsValidIndex(NeighbourIndex) && InPlacedBuildings[NeighbourIndex].BuildingExtent.Y >
+			DeadLengthMaker.BuildingExtent.Y)
+		{
+			DeadLengthMaker = DeadLengthMaker.MergeBuilding(InPlacedBuildings[NeighbourIndex]);
+			UE_LOG(LogTemp, Display,
+			       TEXT("Merge Last Building With Neighbour To Make A Dummy Building,Location At %s ,Extent Is %s"),
+			       *DeadLengthMaker.Location.ToString(), *DeadLengthMaker.BuildingExtent.ToString())
+		}
+	}
 	if (InCurrentEdgeIndex < InAllPlaceableEdges.Num())
 	{
 		//检测上一个建筑是不是在相邻边，可能有一段不适合生成，但会影响到下一个边,可以以外接圆直径做区分
@@ -491,6 +505,7 @@ float UBuildingGeneratorSubsystem::GetDeadLength(const TArray<FPlaceableBlockEdg
 		                                         : InAllPlaceableEdges[0]).Direction;
 	//死区分为两种情况：
 	const FVector RecYVector = -DeadLengthMaker.ForwardDir * (2.0 * (DeadLengthMaker.BuildingExtent.Y));
+	UE_LOG(LogCityGenerator, Display, TEXT("DeadLength Maker Y Vector %s"), *RecYVector.ToString());
 	double AngleCosValue = UKismetMathLibrary::Dot_VectorVector(ProjectionTargetEdgeDir, ProjectionSourceEdgeDir);
 	float DeadLength = 0.0f;
 	//1.当两边方向向量夹角为锐角时（角点视觉呈现为钝角）仅有一段死区，为矩形Y方向长度向当前边投影；
@@ -498,7 +513,7 @@ float UBuildingGeneratorSubsystem::GetDeadLength(const TArray<FPlaceableBlockEdg
 	{
 		DeadLength += FMath::Abs(UKismetMathLibrary::Dot_VectorVector(ProjectionTargetEdgeDir, RecYVector));
 	}
-	//2当两边方向向量夹角为顿角时（角点视觉呈现为锐角）有两段死区，为矩形Y方向长度向当前边投影+顶面X方向向当前边投影
+	//2当两边方向向量夹角为钝角时（角点视觉呈现为锐角）有两段死区，为矩形Y方向长度向当前边投影+顶面X方向向当前边投影
 	else
 	{
 		//第一段以Y方向边为对侧直角边，sin(a)=sin(pi-a)=YLength/DeadLength1
@@ -509,6 +524,7 @@ float UBuildingGeneratorSubsystem::GetDeadLength(const TArray<FPlaceableBlockEdg
 		const FVector& RecXVector = ProjectionSourceEdgeDir * DeadLengthMaker.BuildingExtent.X * 2;
 		DeadLength += FMath::Abs(UKismetMathLibrary::Dot_VectorVector(ProjectionTargetEdgeDir, RecXVector));
 	}
+	UE_LOG(LogCityGenerator, Display, TEXT("DeadLine Length %f"), DeadLength);
 	DeadLength += 50.0;
 	return DeadLength;
 }

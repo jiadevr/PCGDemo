@@ -27,13 +27,7 @@ struct FPlacedBuilding
 		Location(InLocation), ForwardDir(InForward), BuildingExtent(InBuildingExtent), TypeID(InTypeID),
 		OwnerBlockEdgeIndex(InOwnerBlockEdgeIndex)
 	{
-		OBBBox.Center = InLocation;
-		OBBBox.AxisY = InForward;
-		OBBBox.AxisX = UKismetMathLibrary::Cross_VectorVector(InForward, FVector::UpVector);
-		OBBBox.ExtentX = BuildingExtent.X;
-		OBBBox.ExtentY = BuildingExtent.Y;
-		OBBBox.ExtentZ = BuildingExtent.Z;
-		BoundingBox = FBox2D(GetPointsLocation());
+		//业务逻辑中先初始化一个Dummy-Extent为0避免每次申请内存，因此在这里更新AABB和OBB没有作用
 	}
 
 	~FPlacedBuilding()
@@ -50,6 +44,17 @@ struct FPlacedBuilding
 
 	FBox2D BoundingBox;
 	FOrientedBox OBBBox;
+
+	void RefreshCollisionInfo()
+	{
+		OBBBox.Center = Location;
+		OBBBox.AxisY = ForwardDir;
+		OBBBox.AxisX = UKismetMathLibrary::Cross_VectorVector(ForwardDir, FVector::UpVector);
+		OBBBox.ExtentX = BuildingExtent.X;
+		OBBBox.ExtentY = BuildingExtent.Y;
+		OBBBox.ExtentZ = BuildingExtent.Z;
+		BoundingBox = FBox2D(GetPointsLocation());
+	}
 
 	void DrawDebugShape(const UWorld* TargetWorld, const FColor DebugColor = FColor::Red) const
 	{
@@ -116,7 +121,6 @@ struct FPlacedBuilding
 		return bIsOverlapped;
 	}
 
-public:
 	bool IsOverlappedByOtherBuilding(const FPlacedBuilding& OtherBuilding) const
 	{
 		//过滤同一分段上的，已经使用距离控制不会相交
@@ -145,5 +149,35 @@ public:
 		       TEXT("[BuildingGenerator] Potential Intersection Detected!,Fail To Pass AABB Detection"));
 		//最后进行OBB检测
 		return IsOverlappedInOBB(OtherBuilding);
+	}
+
+	/**
+	 * 当前Building和传入的Building进行合并，重新计算Bounding，以调用者朝向为主方向，相当于以现在的体积构造一个新的OBB
+	 * @param OtherBuilding 
+	 * @return 
+	 */
+	[[nodiscard]] FPlacedBuilding MergeBuilding(const FPlacedBuilding& OtherBuilding)
+	{
+		//相当于以现在的
+		FVector CurrentAxisX = OBBBox.AxisX;
+		FVector CurrentAxisY = OBBBox.AxisY;
+		FFloatInterval CurrentIntervalX = OBBBox.Project(CurrentAxisX);
+		FFloatInterval OtherIntervalX = OtherBuilding.OBBBox.Project(CurrentAxisX);
+		CurrentIntervalX.Include(OtherIntervalX.Max);
+		CurrentIntervalX.Include(OtherIntervalX.Min);
+		FFloatInterval CurrentIntervalY = OBBBox.Project(CurrentAxisY);
+		FFloatInterval OtherIntervalY = OtherBuilding.OBBBox.Project(CurrentAxisY);
+		CurrentIntervalY.Include(OtherIntervalY.Max);
+		CurrentIntervalY.Include(OtherIntervalY.Min);
+		//新建新的临时描述
+
+		FVector NewExtent{
+			CurrentIntervalX.Size() / 2, CurrentIntervalY.Size() / 2,
+			FMath::Max(BuildingExtent.Z, OtherBuilding.BuildingExtent.Z)
+		};
+		FVector NewCenter = 0.5 * Location + 0.5 * OtherBuilding.Location;
+
+		FPlacedBuilding DummyBuilding{NewCenter, ForwardDir, NewExtent, -1, OwnerBlockEdgeIndex};
+		return DummyBuilding;
 	}
 };
