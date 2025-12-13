@@ -207,6 +207,12 @@ void UBuildingGeneratorSubsystem::Test_PlaceBuildingAtEdgeManually()
 	}
 }
 
+void UBuildingGeneratorSubsystem::Test_SetManuallyPlaceEdgeIndex(int32 InIndex)
+{
+	CurrentEdgeIndex = FMath::Clamp(InIndex, 0, PlaceableEdges_Test.Num() - 1);
+	UE_LOG(LogCityGenerator, Display, TEXT("Set Fill Target Edge Index To %i"), CurrentEdgeIndex);
+}
+
 void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBlockEdge>& InAllEdges,
                                                        int32 InTargetEdgeIndex,
                                                        const TArray<FVector>& InAllBuildingExtent,
@@ -262,6 +268,8 @@ void UBuildingGeneratorSubsystem::PlaceBuildingsAtEdge(const TArray<FPlaceableBl
 				                                     TestingExtent.X), TestingExtent.Y);
 			NewSelected.Location = BuildingCenter;
 			NewSelected.BuildingExtent = TestingExtent;
+			//因为前面初始化的时候初始化Extent为0，在这里需要更新碰撞信息
+			NewSelected.RefreshCollisionInfo();
 			bool bCanPlace = true;
 			for (const FPlacedBuilding& PlacedBuilding : PlacedBuildings)
 			{

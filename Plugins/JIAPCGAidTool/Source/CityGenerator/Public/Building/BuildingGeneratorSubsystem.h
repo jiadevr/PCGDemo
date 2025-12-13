@@ -48,10 +48,19 @@ public:
 	/**
 	 * 测试函数
 	 * 每次点击在已经初始化（PlaceBuildingAlongSpline）的样条上放置建筑，用于检测碰撞、死区
+	 * 当可以生成时绘制SolidBox并**自动切换到下一条**
+	 * 当边无法生成时在给定初始位置绘制全部尝试过的OBBBox
 	 * 受到CityGenerator.Building.FillAllEdge=false控制，对应函数为PlaceBuildingsAtEdge
 	 */
 	UFUNCTION(BlueprintCallable)
 	void Test_PlaceBuildingAtEdgeManually();
+	
+	/**
+	 * 设置手动填充需要绘制的Index，适用于Test_PlaceBuildingAtEdgeManually跳过边填充
+	 * @param InIndex 目标EdgeIndex
+	 */
+	UFUNCTION(BlueprintCallable)
+	void Test_SetManuallyPlaceEdgeIndex(int32 InIndex=0);
 
 	//测试函数
 	//输入两个静态网格体调用圆距离、AABB、OBB碰撞检测
